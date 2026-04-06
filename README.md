@@ -1,6 +1,13 @@
 # Tauri Play
 
-A standalone desktop media player built with **Tauri 2**, **React 19**, and **Rust**. Plays local audio/video files and streams from Google Drive, with waveform visualization, playlist management, drag-and-drop, and metadata editing.
+<p align="center">
+  <img src="app-icon.png" alt="Tauri Play" width="200" />
+</p>
+
+<p align="center">
+  A standalone desktop media player built with <strong>Tauri 2</strong>, <strong>React 19</strong>, and <strong>Rust</strong>.<br/>
+  Plays local audio/video files and streams from Google Drive, with waveform visualization, playlist management, drag-and-drop, and metadata editing.
+</p>
 
 ## Features
 
