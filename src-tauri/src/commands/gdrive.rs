@@ -3,7 +3,7 @@ use crate::providers::gdrive::{api, oauth::OAuthManager};
 use crate::state::AppState;
 use serde::Serialize;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Serialize)]
@@ -27,6 +27,7 @@ pub async fn connect_gdrive(
     // Clone what we need before any .await
     let db = state.db.clone();
     let app_data_dir = state.app_data_dir.clone();
+    let app_handle = state.app_handle.clone();
 
     // Resolve credentials: use provided or fall back to stored
     let (cid, csecret) = if client_id.is_empty() || client_secret.is_empty() {
@@ -84,9 +85,10 @@ pub async fn connect_gdrive(
     })?;
 
     // Send success response to browser
-    let html = "<html><body style=\"font-family:system-ui;text-align:center;padding:60px\">\
-        <h2>Connected to Google Drive!</h2>\
-        <p>You can close this tab and return to Tauri Play.</p></body></html>";
+    let html = r#"<html><head><script>setTimeout(function(){window.close()},2000);</script></head>
+        <body style="font-family:system-ui;text-align:center;padding:60px;background:#09090b;color:#e4e4e7">
+        <h2 style="color:#22c55e">&#10003; Connected to Google Drive!</h2>
+        <p style="color:#a1a1aa">This tab will close automatically. You can return to Tauri Play.</p></body></html>"#;
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         html.len(),
@@ -105,6 +107,14 @@ pub async fn connect_gdrive(
         .exchange_code(&code, "http://127.0.0.1:1421")
         .await
         .map_err(|e| format!("Failed to exchange authorization code: {}", e))?;
+
+    // Notify frontend and focus the app window
+    if let Some(ref handle) = app_handle {
+        let _ = handle.emit("gdrive-connected", ());
+        if let Some(window) = handle.get_webview_window("main") {
+            let _ = window.set_focus();
+        }
+    }
 
     Ok(())
 }

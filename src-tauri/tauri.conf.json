@@ -19,6 +19,7 @@
         "minHeight": 600
       }
     ],
+    "withGlobalTauri": true,
     "security": {
       "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:9876 https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com; media-src 'self' http://127.0.0.1:9876 blob:; img-src 'self' http://127.0.0.1:9876 data:; style-src 'self' 'unsafe-inline'"
     }

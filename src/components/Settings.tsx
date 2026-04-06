@@ -14,6 +14,7 @@ import {
   removeGDriveFolder,
   getGDriveFolders,
 } from "../api/commands";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useContextMenu } from "./ContextMenu";
 import { useLibraryStore } from "../stores/libraryStore";
@@ -93,6 +94,17 @@ export default function Settings() {
     loadDirectories();
     loadCacheStats();
     loadGDriveStatus();
+  }, [loadGDriveStatus]);
+
+  // Listen for GDrive connection event from backend
+  useEffect(() => {
+    const unlisten = listen("gdrive-connected", () => {
+      loadGDriveStatus();
+      setConnecting(false);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [loadGDriveStatus]);
 
   const handleAddDirectory = async () => {

@@ -12,6 +12,8 @@ interface PlaybackState {
   duration: number;
   waveformPeaks: number[];
   showQueue: boolean;
+  volume: number;
+  setVolume: (volume: number) => void;
   playItem: (item: MediaItem) => Promise<void>;
   setQueue: (items: MediaItem[], startIndex?: number) => Promise<void>;
   playNext: (item: MediaItem) => void;
@@ -38,6 +40,7 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => ({
   duration: 0,
   waveformPeaks: [],
   showQueue: false,
+  volume: 1,
 
   playItem: async (item) => {
     try {
@@ -139,6 +142,10 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => ({
 
   toggleQueue: () => {
     set((s) => ({ showQueue: !s.showQueue }));
+  },
+
+  setVolume: (volume) => {
+    set({ volume: Math.max(0, Math.min(1, volume)) });
   },
 
   clearQueue: () => {

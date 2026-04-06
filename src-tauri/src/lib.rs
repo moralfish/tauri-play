@@ -35,6 +35,12 @@ pub fn run() {
 
             app.manage(app_state.clone());
 
+            // Open devtools in debug builds
+            #[cfg(debug_assertions)]
+            if let Some(window) = app.get_webview_window("main") {
+                window.open_devtools();
+            }
+
             // Spawn the streaming server
             let server_state = app_state.clone();
             tauri::async_runtime::spawn(async move {

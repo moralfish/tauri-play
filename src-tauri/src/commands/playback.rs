@@ -7,8 +7,7 @@ use tauri::State;
 #[tauri::command]
 pub fn play(state: State<'_, AppState>, media_id: String) -> Result<String, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let providers = state.providers.lock().map_err(|e| e.to_string())?;
-    playback::resolve_stream_url(&conn, &providers, &media_id).map_err(|e| e.to_string())
+    playback::resolve_stream_url(&conn, &media_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
