@@ -141,13 +141,10 @@ export default function Settings() {
 
   // GDrive handlers
   const handleSignInGDrive = async () => {
-    // If credentials already stored, just sign in
     if (gdriveStatus?.has_credentials) {
       setConnecting(true);
       setConnectError(null);
       try {
-        // Re-use existing credentials — backend will use stored ones
-        // We call connect with empty strings to signal "use stored"
         await connectGDrive("", "");
         await loadGDriveStatus();
       } catch (e) {
@@ -156,7 +153,6 @@ export default function Settings() {
         setConnecting(false);
       }
     } else {
-      // Need credentials first
       setShowCredentialSetup(true);
     }
   };
@@ -247,36 +243,61 @@ export default function Settings() {
     ]);
   };
 
+  // Shared styles
+  const cardStyle = {
+    background: 'var(--bg-elevated)',
+    border: '1px solid var(--border)',
+    borderRadius: '18px',
+  };
+
+  const inputStyle = {
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid var(--border)',
+    color: 'var(--text-primary)',
+  };
+
   return (
     <div
       className="flex flex-col h-full overflow-auto"
       onContextMenu={handleContextMenu}
     >
-      <div className="p-6 max-w-2xl mx-auto w-full space-y-8">
-        <h2 className="text-xl font-semibold">Settings</h2>
+      <div className="p-6 max-w-2xl mx-auto w-full space-y-6">
+        {/* Page header */}
+        <div>
+          <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Settings</h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Manage sources, storage, and integrations</p>
+        </div>
 
         {/* Local Sources */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
+        <section className="space-y-2">
+          <h3 className="text-[11px] font-medium uppercase tracking-wider px-1" style={{ color: 'var(--text-muted)' }}>
             Local Sources
           </h3>
-          <div className="bg-zinc-900 rounded-lg p-4 space-y-2">
+          <div className="p-4 space-y-2" style={cardStyle}>
             {directories.length === 0 ? (
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                 No directories configured
               </p>
             ) : (
               directories.map(([id, path]) => (
                 <div
                   key={id}
-                  className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-zinc-800 group"
+                  className="flex items-center justify-between py-2 px-3 rounded-xl group transition-colors duration-150"
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                 >
-                  <span className="text-sm truncate flex-1 text-zinc-300">
-                    {path}
-                  </span>
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <svg className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--text-muted)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+                    </svg>
+                    <span className="text-sm truncate" style={{ color: 'var(--text-secondary)' }}>
+                      {path}
+                    </span>
+                  </div>
                   <button
                     onClick={() => handleRemoveDirectory(id)}
-                    className="opacity-0 group-hover:opacity-100 text-xs text-zinc-500 hover:text-red-400 transition-opacity ml-2"
+                    className="opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-lg transition-all duration-150"
+                    style={{ color: 'rgba(248,113,113,0.8)' }}
                   >
                     Remove
                   </button>
@@ -286,14 +307,24 @@ export default function Settings() {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={handleAddDirectory}
-                className="px-3 py-1.5 text-sm bg-zinc-800 hover:bg-zinc-700 rounded transition-colors"
+                className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-secondary)',
+                }}
               >
                 Add Folder
               </button>
               <button
                 onClick={handleRescan}
                 disabled={loading}
-                className="px-3 py-1.5 text-sm bg-zinc-800 hover:bg-zinc-700 rounded transition-colors disabled:opacity-50"
+                className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-secondary)',
+                }}
               >
                 {loading ? "Scanning..." : "Rescan All"}
               </button>
@@ -302,22 +333,27 @@ export default function Settings() {
         </section>
 
         {/* Google Drive */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
+        <section className="space-y-2">
+          <h3 className="text-[11px] font-medium uppercase tracking-wider px-1" style={{ color: 'var(--text-muted)' }}>
             Google Drive
           </h3>
-          <div className="bg-zinc-900 rounded-lg p-4 space-y-4">
+          <div className="p-4 space-y-4" style={cardStyle}>
             {gdriveStatus?.connected ? (
               <>
                 {/* Connected state */}
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />
-                  <span className="text-sm text-zinc-300">
+                  <div className="w-2 h-2 rounded-full" style={{ background: '#4ade80' }} />
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     Connected to Google Drive
                   </span>
                   <button
                     onClick={handleDisconnectGDrive}
-                    className="ml-auto px-3 py-1 text-xs text-red-400 bg-zinc-800 hover:bg-zinc-700 rounded transition-colors"
+                    className="ml-auto h-8 px-3 text-xs rounded-xl transition-colors duration-150"
+                    style={{
+                      background: 'rgba(248,113,113,0.1)',
+                      border: '1px solid rgba(248,113,113,0.2)',
+                      color: 'rgba(248,113,113,0.8)',
+                    }}
                   >
                     Disconnect
                   </button>
@@ -326,7 +362,7 @@ export default function Settings() {
                 {/* Selected folders */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-500 uppercase tracking-wider">
+                    <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                       Scan Folders
                     </span>
                     <button
@@ -334,14 +370,15 @@ export default function Settings() {
                         setBrowseStack([]);
                         handleBrowseFolders();
                       }}
-                      className="text-xs text-blue-400 hover:text-blue-300"
+                      className="text-xs font-medium transition-colors duration-150"
+                      style={{ color: 'var(--accent)' }}
                     >
                       Browse Folders
                     </button>
                   </div>
 
                   {gdriveFolders.length === 0 ? (
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                       No folders selected. All audio/video files in your Drive
                       will be scanned.
                     </p>
@@ -350,23 +387,27 @@ export default function Settings() {
                       {gdriveFolders.map((folder) => (
                         <div
                           key={folder.id}
-                          className="flex items-center justify-between py-1 px-2 rounded hover:bg-zinc-800 group"
+                          className="flex items-center justify-between py-1.5 px-3 rounded-xl group transition-colors duration-150"
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                         >
                           <div className="flex items-center gap-2">
                             <svg
-                              className="w-4 h-4 text-zinc-500"
+                              className="w-4 h-4"
+                              style={{ color: 'var(--text-muted)' }}
                               fill="currentColor"
                               viewBox="0 0 20 20"
                             >
                               <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
                             </svg>
-                            <span className="text-sm text-zinc-300">
+                            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                               {folder.name}
                             </span>
                           </div>
                           <button
                             onClick={() => handleRemoveGDriveFolder(folder.id)}
-                            className="opacity-0 group-hover:opacity-100 text-xs text-zinc-500 hover:text-red-400 transition-opacity"
+                            className="opacity-0 group-hover:opacity-100 text-xs transition-opacity"
+                            style={{ color: 'rgba(248,113,113,0.8)' }}
                           >
                             Remove
                           </button>
@@ -378,44 +419,52 @@ export default function Settings() {
 
                 {/* Folder browser */}
                 {showFolderBrowser && (
-                  <div className="border border-zinc-700 rounded-lg overflow-hidden">
-                    <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800 border-b border-zinc-700">
+                  <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+                    <div
+                      className="flex items-center gap-2 px-3 py-2"
+                      style={{ background: 'var(--bg-hover)', borderBottom: '1px solid var(--border)' }}
+                    >
                       <button
                         onClick={handleGoBack}
                         disabled={browseStack.length === 0}
-                        className="text-xs text-zinc-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="text-xs transition-colors duration-150 disabled:opacity-30 disabled:cursor-not-allowed"
+                        style={{ color: 'var(--text-secondary)' }}
                       >
                         &larr; Back
                       </button>
-                      <span className="text-xs text-zinc-500 truncate flex-1">
+                      <span className="text-xs truncate flex-1" style={{ color: 'var(--text-muted)' }}>
                         {browseStack.length === 0
                           ? "My Drive"
                           : browseStack.map((s) => s.name).join(" / ")}
                       </span>
                       <button
                         onClick={() => setShowFolderBrowser(false)}
-                        className="text-xs text-zinc-500 hover:text-white"
+                        className="text-xs transition-colors duration-150"
+                        style={{ color: 'var(--text-muted)' }}
                       >
                         Close
                       </button>
                     </div>
                     <div className="max-h-60 overflow-auto">
                       {browsingLoading ? (
-                        <div className="px-3 py-4 text-center text-xs text-zinc-500">
+                        <div className="px-3 py-4 text-center text-xs" style={{ color: 'var(--text-muted)' }}>
                           Loading folders...
                         </div>
                       ) : browseFolders.length === 0 ? (
-                        <div className="px-3 py-4 text-center text-xs text-zinc-500">
+                        <div className="px-3 py-4 text-center text-xs" style={{ color: 'var(--text-muted)' }}>
                           No subfolders found
                         </div>
                       ) : (
                         browseFolders.map((folder) => (
                           <div
                             key={folder.id}
-                            className="flex items-center gap-2 px-3 py-2 hover:bg-zinc-800 group"
+                            className="flex items-center gap-2 px-3 py-2 group transition-colors duration-150"
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                           >
                             <svg
-                              className="w-4 h-4 text-zinc-500 flex-shrink-0"
+                              className="w-4 h-4 flex-shrink-0"
+                              style={{ color: 'var(--text-muted)' }}
                               fill="currentColor"
                               viewBox="0 0 20 20"
                             >
@@ -423,18 +472,20 @@ export default function Settings() {
                             </svg>
                             <button
                               onClick={() => handleEnterFolder(folder)}
-                              className="text-sm text-zinc-300 hover:text-white truncate flex-1 text-left"
+                              className="text-sm truncate flex-1 text-left transition-colors duration-150"
+                              style={{ color: 'var(--text-secondary)' }}
                             >
                               {folder.name}
                             </button>
                             {isFolderSelected(folder.id) ? (
-                              <span className="text-xs text-green-400 flex-shrink-0">
+                              <span className="text-xs flex-shrink-0" style={{ color: '#4ade80' }}>
                                 Added
                               </span>
                             ) : (
                               <button
                                 onClick={() => handleAddGDriveFolder(folder)}
-                                className="opacity-0 group-hover:opacity-100 text-xs text-blue-400 hover:text-blue-300 transition-opacity flex-shrink-0"
+                                className="opacity-0 group-hover:opacity-100 text-xs transition-opacity flex-shrink-0"
+                                style={{ color: 'var(--accent)' }}
                               >
                                 + Add
                               </button>
@@ -449,19 +500,25 @@ export default function Settings() {
                 <button
                   onClick={handleRescan}
                   disabled={loading}
-                  className="px-3 py-1.5 text-sm bg-zinc-800 hover:bg-zinc-700 rounded transition-colors disabled:opacity-50"
+                  className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50"
+                  style={{
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-secondary)',
+                  }}
                 >
                   {loading ? "Scanning..." : "Scan Google Drive"}
                 </button>
               </>
             ) : (
               <>
-                {/* Not connected — Sign in button */}
+                {/* Not connected -- Sign in button */}
                 <div className="space-y-3">
                   <button
                     onClick={handleSignInGDrive}
                     disabled={connecting}
-                    className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-white hover:bg-zinc-100 text-zinc-900 rounded-lg transition-colors disabled:opacity-50 font-medium text-sm"
+                    className="w-full flex items-center justify-center gap-3 h-11 px-4 rounded-xl transition-colors duration-150 disabled:opacity-50 font-medium text-sm"
+                    style={{ background: '#fff', color: '#1a1a1a' }}
                   >
                     {connecting ? (
                       <>
@@ -513,31 +570,32 @@ export default function Settings() {
                   </button>
 
                   {connectError && (
-                    <p className="text-xs text-red-400">{connectError}</p>
+                    <p className="text-xs" style={{ color: 'rgba(248,113,113,0.9)' }}>{connectError}</p>
                   )}
 
                   {/* Credential setup - shown when needed or toggled */}
                   {!gdriveStatus?.has_credentials && !showCredentialSetup && (
                     <button
                       onClick={() => setShowCredentialSetup(true)}
-                      className="text-xs text-zinc-500 hover:text-zinc-400"
+                      className="text-xs transition-colors duration-150"
+                      style={{ color: 'var(--text-muted)' }}
                     >
                       First time? Set up OAuth credentials
                     </button>
                   )}
 
                   {showCredentialSetup && (
-                    <div className="border border-zinc-700 rounded-lg p-3 space-y-3">
+                    <div className="rounded-xl p-4 space-y-3" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)' }}>
                       <div className="space-y-2">
-                        <p className="text-xs text-zinc-300 font-medium">Setup Instructions:</p>
-                        <ol className="text-xs text-zinc-400 space-y-1.5 list-decimal list-inside">
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Setup Instructions:</p>
+                        <ol className="text-xs space-y-1.5 list-decimal list-inside" style={{ color: 'var(--text-muted)' }}>
                           <li>
                             Open the{" "}
                             <a
                               href="https://console.cloud.google.com/projectcreate"
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-blue-400 hover:text-blue-300 underline"
+                              style={{ color: 'var(--accent)' }}
                             >
                               Google Cloud Console
                             </a>{" "}
@@ -549,13 +607,13 @@ export default function Settings() {
                               href="https://console.cloud.google.com/apis/credentials"
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-blue-400 hover:text-blue-300 underline"
+                              style={{ color: 'var(--accent)' }}
                             >
-                              APIs &amp; Services → Credentials
+                              APIs &amp; Services &rarr; Credentials
                             </a>
                           </li>
                           <li>
-                            Click <strong className="text-zinc-300">+ Create Credentials</strong> → <strong className="text-zinc-300">OAuth client ID</strong>
+                            Click <strong style={{ color: 'var(--text-secondary)' }}>+ Create Credentials</strong> &rarr; <strong style={{ color: 'var(--text-secondary)' }}>OAuth client ID</strong>
                           </li>
                           <li>
                             If prompted, configure the{" "}
@@ -563,18 +621,21 @@ export default function Settings() {
                               href="https://console.cloud.google.com/apis/credentials/consent"
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-blue-400 hover:text-blue-300 underline"
+                              style={{ color: 'var(--accent)' }}
                             >
                               OAuth consent screen
                             </a>{" "}
                             first (External, add your email as test user)
                           </li>
                           <li>
-                            Select <strong className="text-zinc-300">Web application</strong> as the type
+                            Select <strong style={{ color: 'var(--text-secondary)' }}>Web application</strong> as the type
                           </li>
                           <li>
-                            Under <strong className="text-zinc-300">Authorized redirect URIs</strong>, add:{" "}
-                            <code className="text-zinc-300 bg-zinc-800 px-1 rounded select-all">
+                            Under <strong style={{ color: 'var(--text-secondary)' }}>Authorized redirect URIs</strong>, add:{" "}
+                            <code
+                              className="px-1.5 py-0.5 rounded-md text-xs select-all"
+                              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}
+                            >
                               http://127.0.0.1:1421
                             </code>
                           </li>
@@ -584,16 +645,16 @@ export default function Settings() {
                               href="https://console.cloud.google.com/apis/library/drive.googleapis.com"
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-blue-400 hover:text-blue-300 underline"
+                              style={{ color: 'var(--accent)' }}
                             >
                               Google Drive API
                             </a>
                           </li>
-                          <li>Copy the <strong className="text-zinc-300">Client ID</strong> and <strong className="text-zinc-300">Client Secret</strong> below</li>
+                          <li>Copy the <strong style={{ color: 'var(--text-secondary)' }}>Client ID</strong> and <strong style={{ color: 'var(--text-secondary)' }}>Client Secret</strong> below</li>
                         </ol>
                       </div>
                       <div>
-                        <label className="block text-xs text-zinc-500 mb-1">
+                        <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
                           Client ID
                         </label>
                         <input
@@ -601,11 +662,12 @@ export default function Settings() {
                           value={clientId}
                           onChange={(e) => setClientId(e.target.value)}
                           placeholder="xxxxx.apps.googleusercontent.com"
-                          className="w-full bg-zinc-800 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-zinc-600 text-zinc-300 placeholder-zinc-600"
+                          className="w-full h-11 rounded-xl px-3 text-sm outline-none transition-colors duration-150"
+                          style={inputStyle}
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-zinc-500 mb-1">
+                        <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
                           Client Secret
                         </label>
                         <input
@@ -613,20 +675,23 @@ export default function Settings() {
                           value={clientSecret}
                           onChange={(e) => setClientSecret(e.target.value)}
                           placeholder="GOCSPX-..."
-                          className="w-full bg-zinc-800 rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-zinc-600 text-zinc-300 placeholder-zinc-600"
+                          className="w-full h-11 rounded-xl px-3 text-sm outline-none transition-colors duration-150"
+                          style={inputStyle}
                         />
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={handleConnectWithCredentials}
                           disabled={connecting}
-                          className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 rounded transition-colors disabled:opacity-50"
+                          className="h-10 px-4 rounded-xl text-sm font-semibold transition-colors duration-150 disabled:opacity-50"
+                          style={{ background: 'var(--accent)', color: '#000' }}
                         >
                           {connecting ? "Connecting..." : "Save & Connect"}
                         </button>
                         <button
                           onClick={() => setShowCredentialSetup(false)}
-                          className="px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-300"
+                          className="h-10 px-4 rounded-xl text-sm transition-colors duration-150"
+                          style={{ color: 'var(--text-muted)' }}
                         >
                           Cancel
                         </button>
@@ -640,16 +705,18 @@ export default function Settings() {
         </section>
 
         {/* Sync */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
+        <section className="space-y-2">
+          <h3 className="text-[11px] font-medium uppercase tracking-wider px-1" style={{ color: 'var(--text-muted)' }}>
             Background Sync
           </h3>
-          <div className="bg-zinc-900 rounded-lg p-4 space-y-3">
+          <div className="p-4 space-y-3" style={cardStyle}>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-zinc-300">Auto-sync enabled</span>
-              <div className="text-xs text-zinc-500">Every 5 minutes</div>
+              <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Auto-sync enabled</span>
+              <span className="text-xs px-2 py-0.5 rounded-lg" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                Every 5 minutes
+              </span>
             </div>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               The app periodically checks for new or changed files in your
               configured directories and Google Drive folders.
             </p>
@@ -657,37 +724,42 @@ export default function Settings() {
         </section>
 
         {/* Cache */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
+        <section className="space-y-2">
+          <h3 className="text-[11px] font-medium uppercase tracking-wider px-1" style={{ color: 'var(--text-muted)' }}>
             Cache
           </h3>
-          <div className="bg-zinc-900 rounded-lg p-4 space-y-3">
+          <div className="p-4 space-y-3" style={cardStyle}>
             {cacheStats ? (
               <div className="flex items-center gap-6">
                 <div>
-                  <div className="text-sm text-zinc-300">
+                  <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                     {formatBytes(cacheStats.total_bytes)}
                   </div>
-                  <div className="text-xs text-zinc-500">Total size</div>
+                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Total size</div>
                 </div>
                 <div>
-                  <div className="text-sm text-zinc-300">
+                  <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                     {cacheStats.item_count}
                   </div>
-                  <div className="text-xs text-zinc-500">Cached files</div>
+                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Cached files</div>
                 </div>
                 <div>
-                  <div className="text-sm text-zinc-300">2 GB</div>
-                  <div className="text-xs text-zinc-500">Max size</div>
+                  <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>2 GB</div>
+                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Max size</div>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-zinc-500">Loading cache info...</p>
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading cache info...</p>
             )}
             <button
               onClick={handleClearCache}
               disabled={loading}
-              className="px-3 py-1.5 text-sm bg-zinc-800 hover:bg-zinc-700 rounded transition-colors disabled:opacity-50 text-red-400"
+              className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50"
+              style={{
+                background: 'rgba(248,113,113,0.1)',
+                border: '1px solid rgba(248,113,113,0.2)',
+                color: 'rgba(248,113,113,0.8)',
+              }}
             >
               {loading ? "Clearing..." : "Clear Cache"}
             </button>
@@ -695,16 +767,16 @@ export default function Settings() {
         </section>
 
         {/* About */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
+        <section className="space-y-2">
+          <h3 className="text-[11px] font-medium uppercase tracking-wider px-1" style={{ color: 'var(--text-muted)' }}>
             About
           </h3>
-          <div className="bg-zinc-900 rounded-lg p-4">
-            <div className="text-sm text-zinc-300">Tauri Play</div>
-            <div className="text-xs text-zinc-500 mt-1">
+          <div className="p-4" style={cardStyle}>
+            <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Tauri Play</div>
+            <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
               Built with Tauri 2 + React + Rust
             </div>
-            <div className="text-xs text-zinc-500">Version 0.1.0</div>
+            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Version 0.1.0</div>
           </div>
         </section>
       </div>

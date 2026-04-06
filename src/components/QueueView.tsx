@@ -23,15 +23,30 @@ export default function QueueView() {
   const history = queue.slice(0, queueIndex);
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950 border-l border-zinc-800">
+    <div
+      className="flex flex-col h-full"
+      style={{
+        background: "var(--bg-surface)",
+        borderLeft: "1px solid var(--border)",
+      }}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-        <h3 className="text-sm font-semibold">Queue</h3>
+      <div
+        className="flex items-center justify-between px-4 py-3"
+        style={{ borderBottom: "1px solid var(--border)" }}
+      >
+        <h3
+          className="text-sm font-semibold"
+          style={{ color: "var(--text-primary)" }}
+        >
+          Queue
+        </h3>
         <div className="flex items-center gap-2">
           {queue.length > 0 && (
             <button
               onClick={clearQueue}
-              className="text-zinc-500 hover:text-red-400 text-xs"
+              className="text-xs transition-colors duration-150 hover:text-red-400"
+              style={{ color: "var(--text-muted)" }}
               title="Clear queue"
             >
               Clear
@@ -39,7 +54,8 @@ export default function QueueView() {
           )}
           <button
             onClick={toggleQueue}
-            className="text-zinc-500 hover:text-white text-xs"
+            className="text-xs transition-colors duration-150"
+            style={{ color: "var(--text-muted)" }}
           >
             Close
           </button>
@@ -49,8 +65,14 @@ export default function QueueView() {
       <div className="flex-1 overflow-auto">
         {/* Now Playing */}
         {currentItem && (
-          <div className="px-4 py-3 border-b border-zinc-800/50">
-            <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
+          <div
+            className="px-4 py-3"
+            style={{ borderBottom: "1px solid var(--border)" }}
+          >
+            <div
+              className="text-[11px] font-semibold uppercase tracking-wider mb-2"
+              style={{ color: "var(--text-muted)" }}
+            >
               Now Playing
             </div>
             <div className="flex items-center gap-3">
@@ -58,26 +80,41 @@ export default function QueueView() {
                 <img
                   src={artworkUrl(currentItem.artwork_hash)}
                   alt=""
-                  className="w-10 h-10 rounded object-cover flex-shrink-0"
+                  className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
                 />
               ) : (
-                <div className="w-10 h-10 rounded bg-zinc-800 flex items-center justify-center flex-shrink-0">
-                  <span className="text-zinc-600 text-xs">
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ background: "var(--bg-active)" }}
+                >
+                  <span
+                    className="text-xs"
+                    style={{ color: "var(--text-muted)" }}
+                  >
                     {currentItem.kind === "Video" ? "V" : "A"}
                   </span>
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">
+                <div
+                  className="text-sm font-medium truncate"
+                  style={{ color: "var(--text-primary)" }}
+                >
                   {currentItem.title || currentItem.name}
                 </div>
                 {currentItem.artist && (
-                  <div className="text-xs text-zinc-400 truncate">
+                  <div
+                    className="text-xs truncate"
+                    style={{ color: "var(--text-secondary)" }}
+                  >
                     {currentItem.artist}
                   </div>
                 )}
               </div>
-              <span className="text-xs text-zinc-500 tabular-nums flex-shrink-0">
+              <span
+                className="text-xs tabular-nums flex-shrink-0"
+                style={{ color: "var(--text-muted)" }}
+              >
                 {formatDuration(currentItem.duration_secs)}
               </span>
             </div>
@@ -86,14 +123,21 @@ export default function QueueView() {
 
         {/* Up Next */}
         <div className="px-4 py-3">
-          <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
+          <div
+            className="text-[11px] font-semibold uppercase tracking-wider mb-2"
+            style={{ color: "var(--text-muted)" }}
+          >
             Next Up
             {upNext.length > 0 && (
-              <span className="ml-1 text-zinc-600">({upNext.length})</span>
+              <span className="ml-1" style={{ color: "var(--text-muted)" }}>
+                ({upNext.length})
+              </span>
             )}
           </div>
           {upNext.length === 0 ? (
-            <p className="text-xs text-zinc-600 py-2">Nothing in queue</p>
+            <p className="text-xs py-2" style={{ color: "var(--text-muted)" }}>
+              Nothing in queue
+            </p>
           ) : (
             <div className="space-y-0.5">
               {upNext.map((item, i) => {
@@ -101,36 +145,54 @@ export default function QueueView() {
                 return (
                   <div
                     key={`${item.id}-${actualIndex}`}
-                    className="flex items-center gap-3 py-1.5 px-2 rounded hover:bg-zinc-900 group cursor-pointer"
+                    className="flex items-center gap-2.5 py-2 px-2.5 rounded-xl hover:bg-[var(--bg-hover)] group cursor-pointer transition-colors duration-150"
                     onDoubleClick={() => playFromQueue(actualIndex)}
                   >
-                    <span className="text-xs text-zinc-600 w-5 text-right flex-shrink-0">
+                    <span
+                      className="text-xs w-5 text-right flex-shrink-0 tabular-nums"
+                      style={{ color: "var(--text-muted)" }}
+                    >
                       {i + 1}
                     </span>
                     {item.artwork_hash ? (
                       <img
                         src={artworkUrl(item.artwork_hash)}
                         alt=""
-                        className="w-8 h-8 rounded object-cover flex-shrink-0"
+                        className="w-9 h-9 rounded-lg object-cover flex-shrink-0"
                       />
                     ) : (
-                      <div className="w-8 h-8 rounded bg-zinc-800 flex items-center justify-center flex-shrink-0">
-                        <span className="text-zinc-600 text-[10px]">
+                      <div
+                        className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: "var(--bg-active)" }}
+                      >
+                        <span
+                          className="text-[10px]"
+                          style={{ color: "var(--text-muted)" }}
+                        >
                           {item.kind === "Video" ? "V" : "A"}
                         </span>
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm truncate">
+                      <div
+                        className="text-sm truncate"
+                        style={{ color: "var(--text-primary)" }}
+                      >
                         {item.title || item.name}
                       </div>
                       {item.artist && (
-                        <div className="text-xs text-zinc-500 truncate">
+                        <div
+                          className="text-[11px] truncate"
+                          style={{ color: "var(--text-muted)" }}
+                        >
                           {item.artist}
                         </div>
                       )}
                     </div>
-                    <span className="text-xs text-zinc-600 tabular-nums flex-shrink-0">
+                    <span
+                      className="text-[11px] tabular-nums flex-shrink-0"
+                      style={{ color: "var(--text-muted)" }}
+                    >
                       {formatDuration(item.duration_secs)}
                     </span>
                     <button
@@ -138,10 +200,23 @@ export default function QueueView() {
                         e.stopPropagation();
                         removeFromQueue(actualIndex);
                       }}
-                      className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 text-xs transition-opacity flex-shrink-0"
+                      className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center transition-opacity duration-150 flex-shrink-0"
+                      style={{ color: "var(--text-muted)" }}
                       title="Remove from queue"
                     >
-                      &times;
+                      <svg
+                        className="w-3.5 h-3.5 hover:text-red-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
                     </button>
                   </div>
                 );
@@ -152,26 +227,41 @@ export default function QueueView() {
 
         {/* History */}
         {history.length > 0 && (
-          <div className="px-4 py-3 border-t border-zinc-800/50">
-            <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
+          <div
+            className="px-4 py-3"
+            style={{ borderTop: "1px solid var(--border)" }}
+          >
+            <div
+              className="text-[11px] font-semibold uppercase tracking-wider mb-2"
+              style={{ color: "var(--text-muted)" }}
+            >
               Previously Played
             </div>
             <div className="space-y-0.5">
               {history.map((item, i) => (
                 <div
                   key={`${item.id}-hist-${i}`}
-                  className="flex items-center gap-3 py-1.5 px-2 rounded hover:bg-zinc-900 cursor-pointer opacity-50 hover:opacity-75"
+                  className="flex items-center gap-2.5 py-2 px-2.5 rounded-xl hover:bg-[var(--bg-hover)] cursor-pointer opacity-50 hover:opacity-75 transition-all duration-150"
                   onDoubleClick={() => playFromQueue(i)}
                 >
-                  <span className="text-xs text-zinc-600 w-5 text-right flex-shrink-0">
+                  <span
+                    className="text-xs w-5 text-right flex-shrink-0 tabular-nums"
+                    style={{ color: "var(--text-muted)" }}
+                  >
                     {i + 1}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm truncate">
+                    <div
+                      className="text-sm truncate"
+                      style={{ color: "var(--text-primary)" }}
+                    >
                       {item.title || item.name}
                     </div>
                   </div>
-                  <span className="text-xs text-zinc-600 tabular-nums flex-shrink-0">
+                  <span
+                    className="text-[11px] tabular-nums flex-shrink-0"
+                    style={{ color: "var(--text-muted)" }}
+                  >
                     {formatDuration(item.duration_secs)}
                   </span>
                 </div>

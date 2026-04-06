@@ -1,10 +1,11 @@
 import { useState } from "react";
 import Layout from "./components/Layout";
-import PlaylistSidebar from "./components/PlaylistSidebar";
+import Sidebar from "./components/Sidebar";
 import Library from "./components/Library";
 import PlaylistView from "./components/PlaylistView";
 import Settings from "./components/Settings";
 import Player from "./components/Player";
+import NowPlayingPanel from "./components/NowPlayingPanel";
 
 type View = "library" | "playlist" | "settings";
 
@@ -24,9 +25,10 @@ function App() {
 
   return (
     <Layout
-      sidebar={<PlaylistSidebar onViewChange={setView} currentView={view} />}
+      sidebar={<Sidebar onViewChange={setView} currentView={view} />}
       content={renderContent()}
       player={<Player />}
+      rightPanel={<NowPlayingPanel />}
     />
   );
 }

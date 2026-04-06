@@ -59,22 +59,35 @@ function SortableTrackRow({
     <tr
       ref={setNodeRef}
       style={style}
-      className={`hover:bg-zinc-900 cursor-pointer group ${isDragging ? "opacity-40 bg-zinc-800" : ""}`}
+      className={`cursor-pointer group transition-colors duration-150 ${isDragging ? "opacity-40" : ""}`}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'var(--bg-hover)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent';
+      }}
       {...attributes}
     >
-      <td className="px-4 py-1.5 text-zinc-500 w-8">
+      <td className="px-3 py-3 w-8" style={{ borderRadius: '12px 0 0 12px' }}>
         <span
           {...listeners}
-          className="cursor-grab active:cursor-grabbing text-zinc-600 hover:text-zinc-400"
+          className="cursor-grab active:cursor-grabbing transition-colors duration-150"
+          style={{ color: 'var(--text-muted)' }}
           title="Drag to reorder"
         >
-          ⠿
+          <svg className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" fill="currentColor" viewBox="0 0 24 24">
+            <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+            <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+            <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+          </svg>
         </span>
       </td>
-      <td className="px-4 py-1.5 text-zinc-500">{index + 1}</td>
-      <td className="px-4 py-1.5">
+      <td className="px-3 py-3 w-8">
+        <span style={{ color: 'var(--text-muted)' }}>{index + 1}</span>
+      </td>
+      <td className="px-3 py-3 w-10">
         {item.artwork_hash ? (
           <img
             src={artworkUrl(item.artwork_hash)}
@@ -82,30 +95,33 @@ function SortableTrackRow({
             className="w-8 h-8 rounded object-cover"
           />
         ) : (
-          <div className="w-8 h-8 rounded bg-zinc-800 flex items-center justify-center">
-            <span className="text-zinc-600 text-xs">
-              {item.kind === "Video" ? "V" : "A"}
-            </span>
+          <div
+            className="w-8 h-8 rounded flex items-center justify-center"
+            style={{ background: 'var(--bg-hover)' }}
+          >
+            <svg className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              {item.kind === "Video" ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="m9 9 10.5-3m0 6.553v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 1 1-.99-3.467l2.31-.66a2.25 2.25 0 0 0 1.632-2.163Zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 0 1-.99-3.467l2.31-.66A2.25 2.25 0 0 0 9 15.553Z" />
+              )}
+            </svg>
           </div>
         )}
       </td>
-      <td className="px-4 py-1.5 truncate max-w-xs">
-        {item.title || item.name}
+      <td className="px-3 py-3 truncate max-w-xs">
+        <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
+          {item.title || item.name}
+        </span>
       </td>
-      <td className="px-4 py-1.5 truncate max-w-xs text-zinc-400">
+      <td className="px-3 py-3 truncate max-w-xs" style={{ color: 'var(--text-secondary)' }}>
         {item.artist || ""}
       </td>
-      <td className="px-4 py-1.5 text-zinc-500 text-xs tabular-nums">
+      <td className="px-3 py-3 text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
         {formatDuration(item.duration_secs)}
       </td>
-      <td className="px-4 py-1.5">
-        <span
-          className={`text-xs px-1.5 py-0.5 rounded ${
-            item.kind === "Video"
-              ? "bg-purple-900/50 text-purple-300"
-              : "bg-blue-900/50 text-blue-300"
-          }`}
-        >
+      <td className="px-3 py-3" style={{ borderRadius: '0 12px 12px 0' }}>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
           {item.kind}
         </span>
       </td>
@@ -143,8 +159,11 @@ export default function PlaylistView() {
 
   if (!playlist) {
     return (
-      <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
-        Select a playlist
+      <div className="flex flex-col items-center justify-center h-full gap-3">
+        <svg className="w-10 h-10" style={{ color: 'var(--text-muted)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
+        </svg>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Select a playlist</p>
       </div>
     );
   }
@@ -196,16 +215,25 @@ export default function PlaylistView() {
 
   return (
     <div className="flex flex-col h-full" onContextMenu={handleGeneralContextMenu}>
-      <div className="flex items-center gap-3 p-4 border-b border-zinc-800">
-        <h2 className="text-lg font-semibold flex-1">{playlist.name}</h2>
-        <span className="text-xs text-zinc-500">
-          {tracks.length} tracks
-        </span>
+      {/* Header */}
+      <div className="flex items-center gap-4 px-6 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+            {playlist.name}
+          </h2>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {tracks.length} track{tracks.length !== 1 ? "s" : ""}
+          </p>
+        </div>
         {tracks.length > 0 && (
           <button
             onClick={() => setQueue(tracks, 0)}
-            className="px-3 py-1.5 text-sm bg-white text-zinc-950 rounded hover:bg-zinc-200 transition-colors"
+            className="h-10 px-5 rounded-xl text-sm font-semibold transition-colors duration-150 flex items-center gap-2"
+            style={{ background: 'var(--accent)', color: '#000' }}
           >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
             Play All
           </button>
         )}
@@ -213,8 +241,16 @@ export default function PlaylistView() {
 
       <div className="flex-1 overflow-auto">
         {tracks.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
-            No tracks in this playlist
+          <div className="flex flex-col items-center justify-center h-full gap-3">
+            <svg className="w-10 h-10" style={{ color: 'var(--text-muted)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m9 9 10.5-3m0 6.553v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 1 1-.99-3.467l2.31-.66a2.25 2.25 0 0 0 1.632-2.163Zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 0 1-.99-3.467l2.31-.66A2.25 2.25 0 0 0 9 15.553Z" />
+            </svg>
+            <div className="text-center">
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>No tracks in this playlist</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                Drag tracks from the library to add them
+              </p>
+            </div>
           </div>
         ) : (
           <DndContext
@@ -226,16 +262,16 @@ export default function PlaylistView() {
               items={tracks.map((t) => t.id)}
               strategy={verticalListSortingStrategy}
             >
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-zinc-950 text-zinc-400 text-left">
+              <table className="w-full text-sm" style={{ borderSpacing: '0 2px', borderCollapse: 'separate' }}>
+                <thead className="sticky top-0 text-left" style={{ background: 'var(--bg-surface)' }}>
                   <tr>
-                    <th className="px-4 py-2 font-medium w-8"></th>
-                    <th className="px-4 py-2 font-medium w-8">#</th>
-                    <th className="px-4 py-2 font-medium w-10"></th>
-                    <th className="px-4 py-2 font-medium">Title</th>
-                    <th className="px-4 py-2 font-medium">Artist</th>
-                    <th className="px-4 py-2 font-medium w-16">Time</th>
-                    <th className="px-4 py-2 font-medium w-16">Type</th>
+                    <th className="px-3 py-2.5 text-xs font-normal w-8" style={{ color: 'var(--text-muted)' }}></th>
+                    <th className="px-3 py-2.5 text-xs font-normal w-8" style={{ color: 'var(--text-muted)' }}>#</th>
+                    <th className="px-3 py-2.5 text-xs font-normal w-10" style={{ color: 'var(--text-muted)' }}></th>
+                    <th className="px-3 py-2.5 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>Title</th>
+                    <th className="px-3 py-2.5 text-xs font-normal" style={{ color: 'var(--text-muted)' }}>Artist</th>
+                    <th className="px-3 py-2.5 text-xs font-normal w-16" style={{ color: 'var(--text-muted)' }}>Time</th>
+                    <th className="px-3 py-2.5 text-xs font-normal w-16" style={{ color: 'var(--text-muted)' }}>Type</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -39,7 +39,7 @@ const ALL_COLUMNS: ColumnDef[] = [
     defaultVisible: true,
     width: "w-8",
     render: (_item, index) => (
-      <span className="text-zinc-500">{index + 1}</span>
+      <span style={{ color: 'var(--text-muted)' }}>{index + 1}</span>
     ),
   },
   {
@@ -54,7 +54,9 @@ const ALL_COLUMNS: ColumnDef[] = [
     label: "Title",
     defaultVisible: true,
     render: (item) => (
-      <span className="truncate">{item.title || item.name}</span>
+      <span className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>
+        {item.title || item.name}
+      </span>
     ),
   },
   {
@@ -62,7 +64,9 @@ const ALL_COLUMNS: ColumnDef[] = [
     label: "Artist",
     defaultVisible: true,
     render: (item) => (
-      <span className="truncate text-zinc-400">{item.artist || ""}</span>
+      <span className="truncate" style={{ color: 'var(--text-secondary)' }}>
+        {item.artist || ""}
+      </span>
     ),
   },
   {
@@ -70,7 +74,9 @@ const ALL_COLUMNS: ColumnDef[] = [
     label: "Album",
     defaultVisible: true,
     render: (item) => (
-      <span className="truncate text-zinc-400">{item.album || ""}</span>
+      <span className="truncate" style={{ color: 'var(--text-secondary)' }}>
+        {item.album || ""}
+      </span>
     ),
   },
   {
@@ -79,7 +85,7 @@ const ALL_COLUMNS: ColumnDef[] = [
     defaultVisible: true,
     width: "w-16",
     render: (item) => (
-      <span className="text-zinc-500 text-xs tabular-nums">
+      <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
         {formatDuration(item.duration_secs)}
       </span>
     ),
@@ -90,13 +96,7 @@ const ALL_COLUMNS: ColumnDef[] = [
     defaultVisible: true,
     width: "w-16",
     render: (item) => (
-      <span
-        className={`text-xs px-1.5 py-0.5 rounded ${
-          item.kind === "Video"
-            ? "bg-purple-900/50 text-purple-300"
-            : "bg-blue-900/50 text-blue-300"
-        }`}
-      >
+      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
         {item.kind}
       </span>
     ),
@@ -107,7 +107,7 @@ const ALL_COLUMNS: ColumnDef[] = [
     defaultVisible: false,
     width: "w-24",
     render: (item) => (
-      <span className="truncate text-zinc-400 text-xs">
+      <span className="truncate text-xs" style={{ color: 'var(--text-secondary)' }}>
         {item.genre || ""}
       </span>
     ),
@@ -118,7 +118,9 @@ const ALL_COLUMNS: ColumnDef[] = [
     defaultVisible: false,
     width: "w-14",
     render: (item) => (
-      <span className="text-zinc-400 text-xs">{item.year || ""}</span>
+      <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+        {item.year || ""}
+      </span>
     ),
   },
   {
@@ -127,7 +129,9 @@ const ALL_COLUMNS: ColumnDef[] = [
     defaultVisible: false,
     width: "w-14",
     render: (item) => (
-      <span className="text-zinc-500 text-xs">{item.track_number || ""}</span>
+      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        {item.track_number || ""}
+      </span>
     ),
   },
 ];
@@ -164,10 +168,17 @@ function ArtworkCell({ item }: { item: MediaItem }) {
           className="w-8 h-8 rounded object-cover"
         />
       ) : (
-        <div className="w-8 h-8 rounded bg-zinc-800 flex items-center justify-center">
-          <span className="text-zinc-600 text-xs">
-            {item.kind === "Video" ? "V" : "A"}
-          </span>
+        <div
+          className="w-8 h-8 rounded flex items-center justify-center"
+          style={{ background: 'var(--bg-hover)' }}
+        >
+          <svg className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            {item.kind === "Video" ? (
+              <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" d="m9 9 10.5-3m0 6.553v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 1 1-.99-3.467l2.31-.66a2.25 2.25 0 0 0 1.632-2.163Zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 0 1-.99-3.467l2.31-.66A2.25 2.25 0 0 0 9 15.553Z" />
+            )}
+          </svg>
         </div>
       )}
       {/* Play overlay */}
@@ -203,23 +214,27 @@ function SortableColumnItem({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-700 rounded"
+      className="flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors duration-150"
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
     >
       <span
         {...attributes}
         {...listeners}
-        className="cursor-grab text-zinc-600 hover:text-zinc-400 text-xs"
+        className="cursor-grab text-xs"
+        style={{ color: 'var(--text-muted)' }}
       >
-        ⠿
+        &#x2807;
       </span>
       <label className="flex items-center gap-2 flex-1 cursor-pointer text-sm">
         <input
           type="checkbox"
           checked={col.visible}
           onChange={onToggle}
-          className="rounded bg-zinc-700 border-zinc-600 accent-blue-500"
+          className="rounded accent-[var(--accent)]"
+          style={{ background: 'var(--bg-hover)', borderColor: 'var(--border)' }}
         />
-        <span className="text-zinc-300">{col.label}</span>
+        <span style={{ color: 'var(--text-secondary)' }}>{col.label}</span>
       </label>
     </div>
   );
@@ -251,15 +266,23 @@ function DraggableRow({
   return (
     <tr
       ref={setNodeRef}
-      className={`hover:bg-zinc-900 cursor-pointer group ${isDragging ? "opacity-40" : ""}`}
+      className={`cursor-pointer group transition-colors duration-150 ${isDragging ? "opacity-40" : ""}`}
+      style={{ borderRadius: '12px' }}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'var(--bg-hover)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent';
+      }}
       {...attributes}
     >
       {columns.map((col, colIdx) => (
         <td
           key={col.id}
-          className={`px-4 py-1.5 ${col.width ? col.width : "max-w-xs"}`}
+          className={`px-4 py-3 ${col.width ? col.width : "max-w-xs"}`}
+          style={colIdx === 0 ? { borderRadius: '12px 0 0 12px' } : colIdx === columns.length - 1 ? { borderRadius: '0 12px 12px 0' } : undefined}
           {...(colIdx === 0 ? listeners : {})}
         >
           {col.render(item, index)}
@@ -479,125 +502,154 @@ export default function Library() {
       className="flex flex-col h-full"
       onContextMenu={handleGeneralContextMenu}
     >
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 p-4 border-b border-zinc-800">
-        <h2 className="text-lg font-semibold">Library</h2>
-        {/* Search */}
-        <div className="relative flex-1 max-w-xs">
+      {/* Header */}
+      <div className="flex items-center gap-4 px-6 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
+        {/* Left: title */}
+        <div className="flex-shrink-0">
+          <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Library</h2>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {sortedItems.length}{sortedItems.length !== items.length ? ` / ${items.length}` : ""} tracks
+          </p>
+        </div>
+
+        {/* Center: search */}
+        <div className="relative flex-1 max-w-md">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-muted)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search tracks..."
-            className="w-full bg-zinc-800 rounded px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-zinc-600 placeholder-zinc-500"
+            className="w-full h-10 rounded-xl pl-10 pr-8 text-sm outline-none transition-colors duration-150"
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-primary)',
+            }}
           />
           {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white text-xs"
-            >
-              ✕
+            <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
           )}
         </div>
-        <span className="text-xs text-zinc-500 mr-2">
-          {sortedItems.length}{sortedItems.length !== items.length ? ` / ${items.length}` : ""} items
-        </span>
 
-        {/* Column picker */}
-        <div className="relative">
-          <button
-            onClick={() => setShowColumnPicker(!showColumnPicker)}
-            className="px-2 py-1.5 text-sm bg-zinc-800 hover:bg-zinc-700 rounded transition-colors"
-            title="Configure columns"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.5}
+        {/* Right: actions */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Column picker button */}
+          <div className="relative">
+            <button
+              onClick={() => setShowColumnPicker(!showColumnPicker)}
+              className="h-10 w-10 rounded-xl flex items-center justify-center transition-colors duration-150"
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-secondary)',
+              }}
+              title="Configure columns"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
-              />
-            </svg>
-          </button>
-          {showColumnPicker && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setShowColumnPicker(false)}
-              />
-              <div className="absolute right-0 top-full mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-2 px-1 min-w-[180px] z-50">
-                <div className="text-xs text-zinc-500 uppercase tracking-wider px-2 pb-1 mb-1 border-b border-zinc-700">
-                  Columns
-                </div>
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleColumnDragEnd}
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+              </svg>
+            </button>
+            {showColumnPicker && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowColumnPicker(false)}
+                />
+                <div
+                  className="absolute right-0 top-full mt-2 rounded-xl shadow-xl py-2 px-1 min-w-[200px] z-50"
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border)',
+                  }}
                 >
-                  <SortableContext
-                    items={columnState.map((c) => c.id)}
-                    strategy={verticalListSortingStrategy}
+                  <div
+                    className="text-[11px] uppercase tracking-wider px-2 pb-1.5 mb-1"
+                    style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}
                   >
-                    {columnState.map((cs) => {
-                      const def = ALL_COLUMNS.find((c) => c.id === cs.id);
-                      if (!def) return null;
-                      return (
-                        <SortableColumnItem
-                          key={cs.id}
-                          col={{ ...cs, label: def.label }}
-                          onToggle={() => toggleColumn(cs.id)}
-                        />
-                      );
-                    })}
-                  </SortableContext>
-                </DndContext>
-              </div>
-            </>
-          )}
+                    Columns
+                  </div>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleColumnDragEnd}
+                  >
+                    <SortableContext
+                      items={columnState.map((c) => c.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {columnState.map((cs) => {
+                        const def = ALL_COLUMNS.find((c) => c.id === cs.id);
+                        if (!def) return null;
+                        return (
+                          <SortableColumnItem
+                            key={cs.id}
+                            col={{ ...cs, label: def.label }}
+                            onToggle={() => toggleColumn(cs.id)}
+                          />
+                        );
+                      })}
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              </>
+            )}
+          </div>
+          <button
+            onClick={handleAddFolder}
+            className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150"
+            style={{
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            Add Folder
+          </button>
+          <button
+            onClick={scan}
+            disabled={isScanning}
+            className="h-10 px-4 rounded-xl text-sm font-semibold transition-colors duration-150 disabled:opacity-50"
+            style={{ background: 'var(--accent)', color: '#000' }}
+          >
+            {isScanning ? "Scanning..." : "Scan"}
+          </button>
         </div>
-
-        <button
-          onClick={handleAddFolder}
-          className="px-3 py-1.5 text-sm bg-zinc-800 hover:bg-zinc-700 rounded transition-colors"
-        >
-          Add Folder
-        </button>
-        <button
-          onClick={scan}
-          disabled={isScanning}
-          className="px-3 py-1.5 text-sm bg-zinc-800 hover:bg-zinc-700 rounded transition-colors disabled:opacity-50"
-        >
-          {isScanning ? "Scanning..." : "Scan"}
-        </button>
       </div>
 
       {/* Media list */}
       <div className="flex-1 overflow-auto">
         {items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
-            <p className="text-sm">No media files found</p>
-            <p className="text-xs mt-1">
-              Add a folder and scan to get started
-            </p>
+          <div className="flex flex-col items-center justify-center h-full gap-3">
+            <svg className="w-12 h-12" style={{ color: 'var(--text-muted)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m9 9 10.5-3m0 6.553v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 1 1-.99-3.467l2.31-.66a2.25 2.25 0 0 0 1.632-2.163Zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 0 1-1.632 2.163l-1.32.377a1.803 1.803 0 0 1-.99-3.467l2.31-.66A2.25 2.25 0 0 0 9 15.553Z" />
+            </svg>
+            <div className="text-center">
+              <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>No media files found</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                Add a folder and scan to get started
+              </p>
+            </div>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-zinc-950 text-zinc-400 text-left">
+          <table className="w-full text-sm" style={{ borderSpacing: '0 2px', borderCollapse: 'separate' }}>
+            <thead className="sticky top-0 text-left" style={{ background: 'var(--bg-surface)' }}>
               <tr>
                 {visibleColumns.map((col) => (
                   <th
                     key={col.id}
-                    className={`px-4 py-2 font-medium ${col.width || ""} ${
+                    className={`px-4 py-2.5 text-xs font-normal ${col.width || ""} ${
                       col.id !== "artwork" && col.id !== "index"
-                        ? "cursor-pointer hover:text-zinc-200 select-none"
+                        ? "cursor-pointer select-none"
                         : ""
                     }`}
+                    style={{ color: 'var(--text-muted)' }}
                     onClick={() => {
                       if (col.id === "artwork") return;
                       if (sortCol === col.id) {
@@ -612,8 +664,8 @@ export default function Library() {
                       <span className="flex items-center gap-1">
                         {col.label}
                         {sortCol === col.id && (
-                          <span className="text-[10px]">
-                            {sortDir === "asc" ? "▲" : "▼"}
+                          <span className="text-[10px]" style={{ color: 'var(--accent)' }}>
+                            {sortDir === "asc" ? "\u25B2" : "\u25BC"}
                           </span>
                         )}
                       </span>
