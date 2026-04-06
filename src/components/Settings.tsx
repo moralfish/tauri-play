@@ -528,14 +528,70 @@ export default function Settings() {
 
                   {showCredentialSetup && (
                     <div className="border border-zinc-700 rounded-lg p-3 space-y-3">
-                      <p className="text-xs text-zinc-400">
-                        Create a Google Cloud project with OAuth 2.0 credentials
-                        (Desktop type). Add{" "}
-                        <code className="text-zinc-300 bg-zinc-800 px-1 rounded">
-                          http://127.0.0.1:1421
-                        </code>{" "}
-                        as an authorized redirect URI.
-                      </p>
+                      <div className="space-y-2">
+                        <p className="text-xs text-zinc-300 font-medium">Setup Instructions:</p>
+                        <ol className="text-xs text-zinc-400 space-y-1.5 list-decimal list-inside">
+                          <li>
+                            Open the{" "}
+                            <a
+                              href="https://console.cloud.google.com/projectcreate"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-400 hover:text-blue-300 underline"
+                            >
+                              Google Cloud Console
+                            </a>{" "}
+                            and create a new project (or select an existing one)
+                          </li>
+                          <li>
+                            Go to{" "}
+                            <a
+                              href="https://console.cloud.google.com/apis/credentials"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-400 hover:text-blue-300 underline"
+                            >
+                              APIs &amp; Services → Credentials
+                            </a>
+                          </li>
+                          <li>
+                            Click <strong className="text-zinc-300">+ Create Credentials</strong> → <strong className="text-zinc-300">OAuth client ID</strong>
+                          </li>
+                          <li>
+                            If prompted, configure the{" "}
+                            <a
+                              href="https://console.cloud.google.com/apis/credentials/consent"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-400 hover:text-blue-300 underline"
+                            >
+                              OAuth consent screen
+                            </a>{" "}
+                            first (External, add your email as test user)
+                          </li>
+                          <li>
+                            Select <strong className="text-zinc-300">Web application</strong> as the type
+                          </li>
+                          <li>
+                            Under <strong className="text-zinc-300">Authorized redirect URIs</strong>, add:{" "}
+                            <code className="text-zinc-300 bg-zinc-800 px-1 rounded select-all">
+                              http://127.0.0.1:1421
+                            </code>
+                          </li>
+                          <li>
+                            Enable the{" "}
+                            <a
+                              href="https://console.cloud.google.com/apis/library/drive.googleapis.com"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-400 hover:text-blue-300 underline"
+                            >
+                              Google Drive API
+                            </a>
+                          </li>
+                          <li>Copy the <strong className="text-zinc-300">Client ID</strong> and <strong className="text-zinc-300">Client Secret</strong> below</li>
+                        </ol>
+                      </div>
                       <div>
                         <label className="block text-xs text-zinc-500 mb-1">
                           Client ID
