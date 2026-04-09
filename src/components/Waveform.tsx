@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback } from "react";
+import { useThemeStore } from "../stores/themeStore";
 
 interface WaveformProps {
   peaks: number[];
@@ -8,6 +9,7 @@ interface WaveformProps {
 
 export default function Waveform({ peaks, progress, onSeek }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const resolved = useThemeStore((s) => s.resolved);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -27,6 +29,12 @@ export default function Waveform({ peaks, progress, onSeek }: WaveformProps) {
     const barWidth = width / peaks.length;
     const centerY = height / 2;
 
+    // Read theme-aware colors from CSS variables
+    const styles = getComputedStyle(canvas);
+    const playedColor = styles.getPropertyValue("--waveform-played").trim();
+    const unplayedColor = styles.getPropertyValue("--waveform-unplayed").trim();
+    const playheadColor = styles.getPropertyValue("--waveform-playhead").trim();
+
     ctx.clearRect(0, 0, width, height);
 
     for (let i = 0; i < peaks.length; i++) {
@@ -34,7 +42,7 @@ export default function Waveform({ peaks, progress, onSeek }: WaveformProps) {
       const barHeight = peaks[i] * centerY * 0.9;
       const iPlayed = i / peaks.length < progress;
 
-      ctx.fillStyle = iPlayed ? "rgba(255, 255, 255, 0.9)" : "rgba(255, 255, 255, 0.25)";
+      ctx.fillStyle = iPlayed ? playedColor : unplayedColor;
 
       // Top half
       ctx.fillRect(x, centerY - barHeight, Math.max(barWidth - 0.5, 0.5), barHeight);
@@ -44,13 +52,13 @@ export default function Waveform({ peaks, progress, onSeek }: WaveformProps) {
 
     // Playhead line
     const playX = progress * width;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+    ctx.strokeStyle = playheadColor;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(playX, 0);
     ctx.lineTo(playX, height);
     ctx.stroke();
-  }, [peaks, progress]);
+  }, [peaks, progress, resolved]);
 
   useEffect(() => {
     draw();

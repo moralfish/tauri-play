@@ -524,7 +524,7 @@ export default function Library() {
             placeholder="Search tracks..."
             className="w-full h-10 rounded-xl pl-10 pr-8 text-sm outline-none transition-colors duration-150"
             style={{
-              background: 'rgba(255,255,255,0.04)',
+              background: 'var(--bg-input)',
               border: '1px solid var(--border)',
               color: 'var(--text-primary)',
             }}
@@ -546,7 +546,7 @@ export default function Library() {
               onClick={() => setShowColumnPicker(!showColumnPicker)}
               className="h-10 w-10 rounded-xl flex items-center justify-center transition-colors duration-150"
               style={{
-                background: 'rgba(255,255,255,0.05)',
+                background: 'var(--bg-button-secondary)',
                 border: '1px solid var(--border)',
                 color: 'var(--text-secondary)',
               }}
@@ -605,7 +605,7 @@ export default function Library() {
             onClick={handleAddFolder}
             className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150"
             style={{
-              background: 'rgba(255,255,255,0.05)',
+              background: 'var(--bg-button-secondary)',
               border: '1px solid var(--border)',
               color: 'var(--text-secondary)',
             }}
@@ -616,7 +616,7 @@ export default function Library() {
             onClick={scan}
             disabled={isScanning}
             className="h-10 px-4 rounded-xl text-sm font-semibold transition-colors duration-150 disabled:opacity-50"
-            style={{ background: 'var(--accent)', color: '#000' }}
+            style={{ background: 'var(--accent)', color: 'var(--accent-on-accent)' }}
           >
             {isScanning ? "Scanning..." : "Scan"}
           </button>

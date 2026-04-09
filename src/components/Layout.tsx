@@ -25,6 +25,9 @@ export default function Layout({ sidebar, content, player, rightPanel }: LayoutP
   const { addTrack } = usePlaylistStore();
   const showQueue = usePlaybackStore((s) => s.showQueue);
   const currentItem = usePlaybackStore((s) => s.currentItem);
+  const showRightPanel = usePlaybackStore((s) => s.showRightPanel);
+  const leftCollapsed = usePlaybackStore((s) => s.leftSidebarCollapsed);
+  const rightCollapsed = usePlaybackStore((s) => s.rightSidebarCollapsed);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -48,7 +51,7 @@ export default function Layout({ sidebar, content, player, rightPanel }: LayoutP
     }
   };
 
-  const showRightPanel = showQueue || !!currentItem;
+  const rightPanelVisible = showRightPanel && (showQueue || !!currentItem);
 
   return (
     <ContextMenuProvider>
@@ -61,10 +64,15 @@ export default function Layout({ sidebar, content, player, rightPanel }: LayoutP
         <div className="h-screen flex flex-col select-none" style={{ background: 'var(--bg-app)' }}>
           {/* Main area */}
           <div className="flex flex-1 min-h-0 p-2 gap-2">
-            {/* Sidebar */}
+            {/* Left Sidebar — collapsible */}
             <aside
-              className="w-[270px] flex-shrink-0 flex flex-col rounded-[20px] overflow-hidden"
-              style={{ background: 'var(--bg-sidebar)', border: '1px solid var(--border)' }}
+              className="flex-shrink-0 flex flex-col rounded-[20px] overflow-hidden"
+              style={{
+                width: leftCollapsed ? 60 : 270,
+                transition: 'width 0.2s ease',
+                background: 'var(--bg-sidebar)',
+                border: '1px solid var(--border)',
+              }}
             >
               {sidebar}
             </aside>
@@ -77,14 +85,16 @@ export default function Layout({ sidebar, content, player, rightPanel }: LayoutP
               {content}
             </main>
 
-            {/* Right panel */}
-            {showRightPanel && (
+            {/* Right panel — collapsible */}
+            {rightPanelVisible && (
               <aside
-                className="w-[340px] flex-shrink-0 rounded-[20px] overflow-hidden flex flex-col"
+                className="flex-shrink-0 rounded-[20px] overflow-hidden flex flex-col"
                 style={{
+                  width: rightCollapsed ? 60 : 340,
+                  transition: 'width 0.2s ease',
                   background: 'var(--bg-sidebar)',
                   border: '1px solid var(--border)',
-                  boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+                  boxShadow: '0 10px 30px var(--shadow-panel)',
                 }}
               >
                 {rightPanel}
@@ -99,7 +109,7 @@ export default function Layout({ sidebar, content, player, rightPanel }: LayoutP
               style={{
                 background: 'var(--bg-elevated)',
                 border: '1px solid var(--border)',
-                boxShadow: '0 -4px 30px rgba(0,0,0,0.3)',
+                boxShadow: '0 -4px 30px var(--shadow-player)',
               }}
             >
               {player}

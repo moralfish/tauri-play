@@ -30,21 +30,19 @@ pub async fn connect_gdrive(
     let app_handle = state.app_handle.clone();
 
     // Resolve credentials: use provided or fall back to stored
-    let (cid, csecret) = if client_id.is_empty() || client_secret.is_empty() {
+    // Note: new credentials are saved AFTER successful OAuth, not before
+    let (cid, csecret, is_new_creds) = if client_id.is_empty() || client_secret.is_empty() {
         // Use stored credentials
         let conn = db.lock().map_err(|e| e.to_string())?;
-        queries::get_gdrive_config(&conn)
+        let (cid, csecret) = queries::get_gdrive_config(&conn)
             .map_err(|e| e.to_string())?
-            .ok_or_else(|| "No Google Drive credentials configured. Please set up OAuth credentials first.".to_string())?
+            .ok_or_else(|| "No Google Drive credentials configured. Please set up OAuth credentials first.".to_string())?;
+        (cid, csecret, false)
     } else {
-        // Save new credentials to DB
-        let conn = db.lock().map_err(|e| e.to_string())?;
-        queries::set_gdrive_config(&conn, &client_id, &client_secret)
-            .map_err(|e| e.to_string())?;
-        (client_id, client_secret)
+        (client_id, client_secret, true)
     };
 
-    let oauth = OAuthManager::new(cid, csecret, app_data_dir);
+    let oauth = OAuthManager::new(cid.clone(), csecret.clone(), app_data_dir);
     let auth_url = oauth.auth_url();
 
     // Start temporary HTTP server to capture OAuth callback BEFORE opening browser
@@ -57,11 +55,11 @@ pub async fn connect_gdrive(
 
     // Wait for the OAuth callback (with timeout)
     let accept_result = tokio::time::timeout(
-        std::time::Duration::from_secs(300), // 5 minute timeout
+        std::time::Duration::from_secs(120), // 2 minute timeout
         listener.accept(),
     )
     .await
-    .map_err(|_| "OAuth timed out after 5 minutes. Please try again.".to_string())?
+    .map_err(|_| "OAuth timed out. If you saw a Google error page (like 'deleted_client' or 'redirect_uri_mismatch'), your OAuth credentials may be invalid. Please reset and try with new credentials.".to_string())?
     .map_err(|e| format!("Failed to accept OAuth callback: {}", e))?;
 
     let (mut stream, _) = accept_result;
@@ -107,6 +105,13 @@ pub async fn connect_gdrive(
         .exchange_code(&code, "http://127.0.0.1:1421")
         .await
         .map_err(|e| format!("Failed to exchange authorization code: {}", e))?;
+
+    // Save credentials to DB only after successful OAuth flow
+    if is_new_creds {
+        let conn = db.lock().map_err(|e| e.to_string())?;
+        queries::set_gdrive_config(&conn, &cid, &csecret)
+            .map_err(|e| e.to_string())?;
+    }
 
     // Notify frontend and focus the app window
     if let Some(ref handle) = app_handle {

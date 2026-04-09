@@ -18,6 +18,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useContextMenu } from "./ContextMenu";
 import { useLibraryStore } from "../stores/libraryStore";
+import { useThemeStore } from "../stores/themeStore";
 import type { CacheStats, GDriveStatus, GDriveFolder } from "../types";
 
 function formatBytes(bytes: number): string {
@@ -31,6 +32,61 @@ function formatBytes(bytes: number): string {
 interface BrowseFolder {
   id: string;
   name: string;
+}
+
+function AppearanceSelector() {
+  const theme = useThemeStore((s) => s.theme);
+  const setTheme = useThemeStore((s) => s.setTheme);
+
+  const options: { value: "system" | "light" | "dark"; label: string; icon: React.ReactNode }[] = [
+    {
+      value: "system",
+      label: "System",
+      icon: (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+        </svg>
+      ),
+    },
+    {
+      value: "light",
+      label: "Light",
+      icon: (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+        </svg>
+      ),
+    },
+    {
+      value: "dark",
+      label: "Dark",
+      icon: (
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex gap-2">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => setTheme(opt.value)}
+          className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl text-sm font-medium transition-all duration-150"
+          style={{
+            background: theme === opt.value ? 'var(--accent-soft)' : 'var(--bg-button-secondary)',
+            border: theme === opt.value ? '1px solid var(--accent)' : '1px solid var(--border)',
+            color: theme === opt.value ? 'var(--accent)' : 'var(--text-secondary)',
+          }}
+        >
+          {opt.icon}
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export default function Settings() {
@@ -149,6 +205,7 @@ export default function Settings() {
         await loadGDriveStatus();
       } catch (e) {
         setConnectError(String(e));
+        await loadGDriveStatus();
       } finally {
         setConnecting(false);
       }
@@ -172,6 +229,8 @@ export default function Settings() {
       setShowCredentialSetup(false);
     } catch (e) {
       setConnectError(String(e));
+      // Refresh status from DB — creds may have been saved before the error
+      await loadGDriveStatus();
     } finally {
       setConnecting(false);
     }
@@ -251,7 +310,7 @@ export default function Settings() {
   };
 
   const inputStyle = {
-    background: 'rgba(255,255,255,0.04)',
+    background: 'var(--bg-input)',
     border: '1px solid var(--border)',
     color: 'var(--text-primary)',
   };
@@ -267,6 +326,16 @@ export default function Settings() {
           <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Settings</h2>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Manage sources, storage, and integrations</p>
         </div>
+
+        {/* Appearance */}
+        <section className="space-y-2">
+          <h3 className="text-[11px] font-medium uppercase tracking-wider px-1" style={{ color: 'var(--text-muted)' }}>
+            Appearance
+          </h3>
+          <div className="p-4" style={cardStyle}>
+            <AppearanceSelector />
+          </div>
+        </section>
 
         {/* Local Sources */}
         <section className="space-y-2">
@@ -309,7 +378,7 @@ export default function Settings() {
                 onClick={handleAddDirectory}
                 className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150"
                 style={{
-                  background: 'rgba(255,255,255,0.05)',
+                  background: 'var(--bg-button-secondary)',
                   border: '1px solid var(--border)',
                   color: 'var(--text-secondary)',
                 }}
@@ -321,7 +390,7 @@ export default function Settings() {
                 disabled={loading}
                 className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50"
                 style={{
-                  background: 'rgba(255,255,255,0.05)',
+                  background: 'var(--bg-button-secondary)',
                   border: '1px solid var(--border)',
                   color: 'var(--text-secondary)',
                 }}
@@ -341,22 +410,39 @@ export default function Settings() {
             {gdriveStatus?.connected ? (
               <>
                 {/* Connected state */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <div className="w-2 h-2 rounded-full" style={{ background: '#4ade80' }} />
                   <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     Connected to Google Drive
                   </span>
-                  <button
-                    onClick={handleDisconnectGDrive}
-                    className="ml-auto h-8 px-3 text-xs rounded-xl transition-colors duration-150"
-                    style={{
-                      background: 'rgba(248,113,113,0.1)',
-                      border: '1px solid rgba(248,113,113,0.2)',
-                      color: 'rgba(248,113,113,0.8)',
-                    }}
-                  >
-                    Disconnect
-                  </button>
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        handleDisconnectGDrive().then(() => {
+                          setShowCredentialSetup(true);
+                        });
+                      }}
+                      className="h-8 px-3 text-xs rounded-xl transition-colors duration-150"
+                      style={{
+                        background: 'var(--bg-button-secondary)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      Reset Credentials
+                    </button>
+                    <button
+                      onClick={handleDisconnectGDrive}
+                      className="h-8 px-3 text-xs rounded-xl transition-colors duration-150"
+                      style={{
+                        background: 'rgba(248,113,113,0.1)',
+                        border: '1px solid rgba(248,113,113,0.2)',
+                        color: 'rgba(248,113,113,0.8)',
+                      }}
+                    >
+                      Disconnect
+                    </button>
+                  </div>
                 </div>
 
                 {/* Selected folders */}
@@ -502,7 +588,7 @@ export default function Settings() {
                   disabled={loading}
                   className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50"
                   style={{
-                    background: 'rgba(255,255,255,0.05)',
+                    background: 'var(--bg-button-secondary)',
                     border: '1px solid var(--border)',
                     color: 'var(--text-secondary)',
                   }}
@@ -570,7 +656,22 @@ export default function Settings() {
                   </button>
 
                   {connectError && (
-                    <p className="text-xs" style={{ color: 'rgba(248,113,113,0.9)' }}>{connectError}</p>
+                    <div className="rounded-xl p-3 space-y-2" style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.15)' }}>
+                      <p className="text-xs" style={{ color: 'rgba(248,113,113,0.9)' }}>{connectError}</p>
+                      {gdriveStatus?.has_credentials && (
+                        <button
+                          onClick={async () => {
+                            await handleDisconnectGDrive();
+                            setConnectError(null);
+                            setShowCredentialSetup(true);
+                          }}
+                          className="text-xs font-medium transition-colors duration-150"
+                          style={{ color: 'var(--accent)' }}
+                        >
+                          Reset credentials &amp; enter new ones
+                        </button>
+                      )}
+                    </div>
                   )}
 
                   {/* Credential setup - shown when needed or toggled */}
@@ -581,6 +682,16 @@ export default function Settings() {
                       style={{ color: 'var(--text-muted)' }}
                     >
                       First time? Set up OAuth credentials
+                    </button>
+                  )}
+
+                  {gdriveStatus?.has_credentials && !showCredentialSetup && !connectError && (
+                    <button
+                      onClick={() => setShowCredentialSetup(true)}
+                      className="text-xs transition-colors duration-150"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      Change OAuth credentials
                     </button>
                   )}
 
@@ -634,7 +745,7 @@ export default function Settings() {
                             Under <strong style={{ color: 'var(--text-secondary)' }}>Authorized redirect URIs</strong>, add:{" "}
                             <code
                               className="px-1.5 py-0.5 rounded-md text-xs select-all"
-                              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}
+                              style={{ background: 'var(--bg-button-secondary)', color: 'var(--text-secondary)' }}
                             >
                               http://127.0.0.1:1421
                             </code>
@@ -684,7 +795,7 @@ export default function Settings() {
                           onClick={handleConnectWithCredentials}
                           disabled={connecting}
                           className="h-10 px-4 rounded-xl text-sm font-semibold transition-colors duration-150 disabled:opacity-50"
-                          style={{ background: 'var(--accent)', color: '#000' }}
+                          style={{ background: 'var(--accent)', color: 'var(--accent-on-accent)' }}
                         >
                           {connecting ? "Connecting..." : "Save & Connect"}
                         </button>

@@ -12,6 +12,9 @@ interface PlaybackState {
   duration: number;
   waveformPeaks: number[];
   showQueue: boolean;
+  showRightPanel: boolean;
+  leftSidebarCollapsed: boolean;
+  rightSidebarCollapsed: boolean;
   volume: number;
   setVolume: (volume: number) => void;
   playItem: (item: MediaItem) => Promise<void>;
@@ -27,6 +30,9 @@ interface PlaybackState {
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   toggleQueue: () => void;
+  toggleRightPanel: () => void;
+  toggleLeftSidebar: () => void;
+  toggleRightSidebar: () => void;
   clearQueue: () => void;
 }
 
@@ -40,6 +46,9 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => ({
   duration: 0,
   waveformPeaks: [],
   showQueue: false,
+  showRightPanel: true,
+  leftSidebarCollapsed: false,
+  rightSidebarCollapsed: false,
   volume: 1,
 
   playItem: async (item) => {
@@ -142,6 +151,18 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => ({
 
   toggleQueue: () => {
     set((s) => ({ showQueue: !s.showQueue }));
+  },
+
+  toggleRightPanel: () => {
+    set((s) => ({ showRightPanel: !s.showRightPanel }));
+  },
+
+  toggleLeftSidebar: () => {
+    set((s) => ({ leftSidebarCollapsed: !s.leftSidebarCollapsed }));
+  },
+
+  toggleRightSidebar: () => {
+    set((s) => ({ rightSidebarCollapsed: !s.rightSidebarCollapsed }));
   },
 
   setVolume: (volume) => {

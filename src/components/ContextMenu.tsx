@@ -40,11 +40,15 @@ export function useContextMenu() {
 function SubMenu({ items, side }: { items: MenuItem[]; side: "left" | "right" }) {
   return (
     <div
-      className={`absolute top-0 ${side === "right" ? "left-full" : "right-full"} ml-0.5 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 min-w-[180px] z-[10001]`}
+      className={`absolute top-0 ${side === "right" ? "left-full" : "right-full"} ml-0.5 rounded-lg shadow-xl py-1 min-w-[180px] z-[10001]`}
+      style={{
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border)',
+      }}
     >
       {items.map((item, i) =>
         item.separator ? (
-          <div key={i} className="my-1 border-t border-zinc-700" />
+          <div key={i} className="my-1" style={{ borderTop: '1px solid var(--border)' }} />
         ) : (
           <button
             key={i}
@@ -53,7 +57,10 @@ function SubMenu({ items, side }: { items: MenuItem[]; side: "left" | "right" })
               if (!item.disabled && item.action) item.action();
             }}
             disabled={item.disabled}
-            className="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-default text-zinc-200 flex items-center justify-between"
+            className="w-full text-left px-3 py-1.5 text-sm disabled:opacity-40 disabled:cursor-default flex items-center justify-between transition-colors duration-100"
+            style={{ color: 'var(--text-primary)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
             {item.label}
           </button>
@@ -76,7 +83,7 @@ function MenuItemRow({
   const rowRef = useRef<HTMLDivElement>(null);
 
   if (item.separator) {
-    return <div className="my-1 border-t border-zinc-700" />;
+    return <div className="my-1" style={{ borderTop: '1px solid var(--border)' }} />;
   }
 
   const handleClick = (e: React.MouseEvent) => {
@@ -103,11 +110,14 @@ function MenuItemRow({
       <button
         onClick={handleClick}
         disabled={item.disabled}
-        className="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-default text-zinc-200 flex items-center justify-between gap-4"
+        className="w-full text-left px-3 py-1.5 text-sm disabled:opacity-40 disabled:cursor-default flex items-center justify-between gap-4 transition-colors duration-100"
+        style={{ color: 'var(--text-primary)' }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
       >
         <span>{item.label}</span>
         {item.submenu && (
-          <span className="text-zinc-500 text-xs">&rsaquo;</span>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>&rsaquo;</span>
         )}
       </button>
       {item.submenu && showSub && (
@@ -157,8 +167,13 @@ function ContextMenuOverlay({
     >
       <div
         ref={menuRef}
-        className="fixed bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl py-1 min-w-[200px]"
-        style={{ left: pos.x, top: pos.y }}
+        className="fixed rounded-lg shadow-xl py-1 min-w-[200px]"
+        style={{
+          left: pos.x,
+          top: pos.y,
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {state.items.map((item, i) => (

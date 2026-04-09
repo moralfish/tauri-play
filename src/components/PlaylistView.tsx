@@ -229,7 +229,7 @@ export default function PlaylistView() {
           <button
             onClick={() => setQueue(tracks, 0)}
             className="h-10 px-5 rounded-xl text-sm font-semibold transition-colors duration-150 flex items-center gap-2"
-            style={{ background: 'var(--accent)', color: '#000' }}
+            style={{ background: 'var(--accent)', color: 'var(--accent-on-accent)' }}
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z" />

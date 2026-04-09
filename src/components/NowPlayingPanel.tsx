@@ -28,8 +28,108 @@ export default function NowPlayingPanel() {
   const upNext = queue.slice(queueIndex + 1, queueIndex + 6);
   const upNextTotal = queue.length - queueIndex - 1;
 
+  const collapsed = usePlaybackStore((s) => s.rightSidebarCollapsed);
+  const toggleCollapse = usePlaybackStore((s) => s.toggleRightSidebar);
+  const toggleRightPanel = usePlaybackStore((s) => s.toggleRightPanel);
+
+  // Collapsed: narrow strip with artwork and controls
+  if (collapsed) {
+    return (
+      <div className="flex flex-col h-full items-center py-3 gap-2">
+        {/* Expand button */}
+        <button
+          onClick={toggleCollapse}
+          className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-150 hover:bg-[var(--bg-hover)]"
+          style={{ color: 'var(--text-muted)' }}
+          title="Expand panel"
+        >
+          <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+          </svg>
+        </button>
+
+        {/* Mini artwork */}
+        {currentItem && (
+          <>
+            <div
+              className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0"
+              style={{ background: 'var(--bg-active)' }}
+            >
+              {currentItem.artwork_hash ? (
+                <img
+                  src={artworkUrl(currentItem.artwork_hash)}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <svg className="w-5 h-5" style={{ color: 'var(--text-muted)' }} fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                  </svg>
+                </div>
+              )}
+            </div>
+
+            {/* Playing indicator */}
+            {isPlaying && (
+              <div className="flex items-center gap-0.5">
+                <span className="w-0.5 h-3 rounded-full animate-pulse" style={{ background: 'var(--accent)' }} />
+                <span className="w-0.5 h-4 rounded-full animate-pulse" style={{ background: 'var(--accent)', animationDelay: '0.15s' }} />
+                <span className="w-0.5 h-2.5 rounded-full animate-pulse" style={{ background: 'var(--accent)', animationDelay: '0.3s' }} />
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Close panel */}
+        <button
+          onClick={toggleRightPanel}
+          className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-150 hover:bg-[var(--bg-hover)]"
+          style={{ color: 'var(--text-muted)' }}
+          title="Close panel"
+        >
+          <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    );
+  }
+
+  // Expanded: full panel
   return (
     <div className="flex flex-col h-full overflow-auto">
+      {/* Panel header with collapse */}
+      <div className="flex items-center justify-between px-4 pt-3 pb-1 flex-shrink-0">
+        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+          Now Playing
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={toggleCollapse}
+            className="w-6 h-6 rounded-md flex items-center justify-center transition-colors duration-150 hover:bg-[var(--bg-hover)]"
+            style={{ color: 'var(--text-muted)' }}
+            title="Collapse panel"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+            </svg>
+          </button>
+          <button
+            onClick={toggleRightPanel}
+            className="w-6 h-6 rounded-md flex items-center justify-center transition-colors duration-150 hover:bg-[var(--bg-hover)]"
+            style={{ color: 'var(--text-muted)' }}
+            title="Close panel"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
       {/* Now Playing Section */}
       {currentItem ? (
         <div className="p-4 space-y-4">
