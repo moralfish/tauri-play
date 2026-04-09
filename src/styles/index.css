@@ -1,18 +1,58 @@
 @import "tailwindcss";
 
 :root {
-  --bg-app: #09090B;
-  --bg-sidebar: #0D0F14;
-  --bg-surface: #111318;
-  --bg-elevated: #161A22;
-  --bg-hover: #1B2130;
-  --bg-active: #20283A;
-  --border: rgba(255,255,255,0.06);
+  /* Dark theme (default) */
+  --bg-app: #0B0E18;
+  --bg-sidebar: #101425;
+  --bg-surface: #141828;
+  --bg-elevated: #1A1F35;
+  --bg-hover: #212745;
+  --bg-active: #283055;
+  --border: rgba(255,255,255,0.07);
   --text-primary: rgba(255,255,255,0.92);
-  --text-secondary: rgba(255,255,255,0.58);
-  --text-muted: rgba(255,255,255,0.38);
-  --accent: #6EA8FE;
-  --accent-soft: rgba(110,168,254,0.16);
+  --text-secondary: rgba(255,255,255,0.55);
+  --text-muted: rgba(255,255,255,0.35);
+  --accent: #3B82F6;
+  --accent-soft: rgba(59,130,246,0.15);
+  --accent-on-accent: #fff;
+  --bg-input: rgba(255,255,255,0.04);
+  --bg-button-secondary: rgba(255,255,255,0.06);
+  --shadow-panel: rgba(0,0,0,0.4);
+  --shadow-player: rgba(0,0,0,0.35);
+  --scrollbar-thumb: rgba(255,255,255,0.08);
+  --scrollbar-thumb-hover: rgba(255,255,255,0.14);
+  --waveform-played: rgba(255,255,255,0.85);
+  --waveform-unplayed: rgba(255,255,255,0.2);
+  --waveform-playhead: rgba(255,255,255,0.5);
+  --player-button-bg: rgba(255,255,255,0.10);
+  --player-button-hover: rgba(255,255,255,0.15);
+}
+
+:root[data-theme="light"] {
+  --bg-app: #EEEEF2;
+  --bg-sidebar: #FFFFFF;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #FFFFFF;
+  --bg-hover: #F0F0F4;
+  --bg-active: rgba(59,130,246,0.10);
+  --border: rgba(0,0,0,0.08);
+  --text-primary: rgba(0,0,0,0.87);
+  --text-secondary: rgba(0,0,0,0.55);
+  --text-muted: rgba(0,0,0,0.38);
+  --accent: #2563EB;
+  --accent-soft: rgba(37,99,235,0.10);
+  --accent-on-accent: #fff;
+  --bg-input: rgba(0,0,0,0.03);
+  --bg-button-secondary: rgba(0,0,0,0.05);
+  --shadow-panel: rgba(0,0,0,0.08);
+  --shadow-player: rgba(0,0,0,0.06);
+  --scrollbar-thumb: rgba(0,0,0,0.08);
+  --scrollbar-thumb-hover: rgba(0,0,0,0.14);
+  --waveform-played: rgba(37,99,235,0.85);
+  --waveform-unplayed: rgba(0,0,0,0.12);
+  --waveform-playhead: rgba(0,0,0,0.25);
+  --player-button-bg: rgba(0,0,0,0.06);
+  --player-button-hover: rgba(0,0,0,0.10);
 }
 
 body {
@@ -32,14 +72,37 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.08);
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.14);
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Smooth transitions globally */
 * {
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Range input styling for progress bar */
+input[type="range"].player-progress {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-active);
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"].player-progress::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0;
+  height: 0;
+}
+input[type="range"].player-progress:hover::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-primary);
 }
