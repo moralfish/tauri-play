@@ -1,13 +1,32 @@
 use crate::db::queries;
-use crate::services::{playback, waveform};
+use crate::services::{gdrive_cache, playback, waveform};
 use crate::state::AppState;
 use serde::Serialize;
 use tauri::State;
 
 #[tauri::command]
 pub fn play(state: State<'_, AppState>, media_id: String) -> Result<String, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    playback::resolve_stream_url(&conn, &media_id).map_err(|e| e.to_string())
+    // Resolve URL synchronously so the frontend can start playback immediately.
+    let url = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        playback::resolve_stream_url(&conn, &media_id).map_err(|e| e.to_string())?
+    };
+
+    // Kick off background hydration for cloud sources: download into the
+    // local cache, extract tag metadata, generate waveform peaks. The play
+    // request itself returns immediately and continues to stream from Drive
+    // until the cache is warm; subsequent plays will hit the cache.
+    let item = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        queries::get_media_item_by_id(&conn, &media_id).map_err(|e| e.to_string())?
+    };
+    if let Some(item) = item {
+        if item.source_type == "gdrive" {
+            gdrive_cache::ensure_cached_in_background((*state).clone(), media_id.clone());
+        }
+    }
+
+    Ok(url)
 }
 
 #[tauri::command]

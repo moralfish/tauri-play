@@ -190,6 +190,29 @@ function ArtworkCell({ item }: { item: MediaItem }) {
           <path d="M8 5v14l11-7z" />
         </svg>
       </button>
+      {/* Cloud badge for non-local sources */}
+      {item.source_type !== "local" && (
+        <div
+          className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full flex items-center justify-center pointer-events-none"
+          style={{ background: 'var(--bg-app)' }}
+          title="Cloud"
+        >
+          <svg
+            className="w-2.5 h-2.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+            style={{ color: 'var(--accent)' }}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"
+            />
+          </svg>
+        </div>
+      )}
     </div>
   );
 }
@@ -307,6 +330,7 @@ export default function Library() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "cloud">("all");
 
   // Load saved column config
   useEffect(() => {
@@ -362,9 +386,18 @@ export default function Library() {
     .map((cs) => ALL_COLUMNS.find((c) => c.id === cs.id)!)
     .filter(Boolean);
 
-  // Filter items by search
+  // Filter items by source first, then by search query
+  const sourceFilteredItems =
+    sourceFilter === "all"
+      ? items
+      : items.filter((item) =>
+          sourceFilter === "local"
+            ? item.source_type === "local"
+            : item.source_type !== "local"
+        );
+
   const filteredItems = searchQuery.trim()
-    ? items.filter((item) => {
+    ? sourceFilteredItems.filter((item) => {
         const q = searchQuery.toLowerCase();
         return (
           (item.title || "").toLowerCase().includes(q) ||
@@ -374,7 +407,10 @@ export default function Library() {
           (item.genre || "").toLowerCase().includes(q)
         );
       })
-    : items;
+    : sourceFilteredItems;
+
+  const localCount = items.filter((i) => i.source_type === "local").length;
+  const cloudCount = items.length - localCount;
 
   // Sort items
   const sortedItems = sortCol
@@ -510,6 +546,39 @@ export default function Library() {
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             {sortedItems.length}{sortedItems.length !== items.length ? ` / ${items.length}` : ""} tracks
           </p>
+        </div>
+
+        {/* Source filter (All / Local / Cloud) */}
+        <div
+          className="flex items-center gap-0.5 p-0.5 rounded-xl flex-shrink-0"
+          style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}
+        >
+          {([
+            { id: "all", label: "All", count: items.length },
+            { id: "local", label: "Local", count: localCount },
+            { id: "cloud", label: "Cloud", count: cloudCount },
+          ] as const).map((opt) => {
+            const active = sourceFilter === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => setSourceFilter(opt.id)}
+                className="h-8 px-3 rounded-lg text-xs font-medium transition-colors duration-150 flex items-center gap-1.5"
+                style={{
+                  background: active ? 'var(--accent)' : 'transparent',
+                  color: active ? 'var(--accent-on-accent)' : 'var(--text-secondary)',
+                }}
+              >
+                <span>{opt.label}</span>
+                <span
+                  className="text-[10px] tabular-nums"
+                  style={{ opacity: active ? 0.8 : 0.6 }}
+                >
+                  {opt.count}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Center: search */}

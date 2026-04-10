@@ -34,7 +34,25 @@ async fn handle_stream(
 
     match item.source_type.as_str() {
         "local" => stream_local(&item.external_id, &item.mime_type, headers).await,
-        "gdrive" => stream_gdrive(state, &item.external_id, &item.mime_type, headers).await,
+        "gdrive" => {
+            // Prefer the on-disk cache so re-plays don't burn Drive bandwidth
+            // and so range requests are served at local-disk speed.
+            let cached_path: Option<String> = {
+                let conn = state.db.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
+                state
+                    .cache_manager
+                    .get_cached_path(&conn, media_id)
+                    .map(|p| p.to_string_lossy().to_string())
+            };
+            if let Some(path) = cached_path {
+                // Refresh LRU bookkeeping; ignore failures.
+                if let Ok(conn) = state.db.lock() {
+                    state.cache_manager.touch(&conn, media_id).ok();
+                }
+                return stream_local(&path, &item.mime_type, headers).await;
+            }
+            stream_gdrive(state, &item.external_id, &item.mime_type, headers).await
+        }
         other => anyhow::bail!("Unknown source type: {}", other),
     }
 }

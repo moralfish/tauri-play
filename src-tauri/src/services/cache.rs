@@ -1,15 +1,24 @@
 use anyhow::Result;
 use rusqlite::Connection;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-pub struct CacheManager;
+/// Default upper bound for the cloud media cache. LRU eviction kicks in
+/// once `total_size` exceeds this. Roughly 10 GB.
+pub const DEFAULT_MAX_BYTES: u64 = 10 * 1024 * 1024 * 1024;
+
+pub struct CacheManager {
+    cache_dir: PathBuf,
+    max_bytes: u64,
+}
 
 impl CacheManager {
-    pub fn new(app_data_dir: &std::path::Path) -> Self {
-        // Ensure the cache directory exists for any future cache writers.
+    pub fn new(app_data_dir: &Path) -> Self {
         let cache_dir = app_data_dir.join("media_cache");
         std::fs::create_dir_all(&cache_dir).ok();
-        Self
+        Self {
+            cache_dir,
+            max_bytes: DEFAULT_MAX_BYTES,
+        }
     }
 
     pub fn get_cached_path(&self, conn: &Connection, media_id: &str) -> Option<PathBuf> {
@@ -21,6 +30,99 @@ impl CacheManager {
             )
             .ok();
         path.map(PathBuf::from).filter(|p| p.exists())
+    }
+
+    /// Return whether the given media is already cached on disk.
+    pub fn is_cached(&self, conn: &Connection, media_id: &str) -> bool {
+        self.get_cached_path(conn, media_id).is_some()
+    }
+
+    /// Build the on-disk path used for a given media id. Caller is
+    /// responsible for writing the file there before calling `register`.
+    pub fn path_for(&self, media_id: &str, ext_hint: Option<&str>) -> PathBuf {
+        let safe_id: String = media_id
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .collect();
+        match ext_hint {
+            Some(ext) if !ext.is_empty() => self.cache_dir.join(format!("{}.{}", safe_id, ext)),
+            _ => self.cache_dir.join(safe_id),
+        }
+    }
+
+    /// Insert a `file_cache` row pointing at an existing on-disk file. The
+    /// file size is recorded so eviction can keep the cache under the cap.
+    pub fn register(&self, conn: &Connection, media_id: &str, path: &Path) -> Result<()> {
+        let metadata = std::fs::metadata(path)?;
+        let size = metadata.len() as i64;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        conn.execute(
+            "INSERT INTO file_cache (media_id, cache_path, file_size, cached_at, last_accessed)
+             VALUES (?1, ?2, ?3, ?4, ?4)
+             ON CONFLICT(media_id) DO UPDATE SET
+                cache_path = excluded.cache_path,
+                file_size = excluded.file_size,
+                last_accessed = excluded.last_accessed",
+            rusqlite::params![media_id, path.to_string_lossy(), size, now],
+        )?;
+        Ok(())
+    }
+
+    /// Bump the LRU timestamp on a cached file. Called whenever the file is
+    /// served, so the cache prefers to evict tracks the user hasn't touched
+    /// in a while.
+    pub fn touch(&self, conn: &Connection, media_id: &str) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        conn.execute(
+            "UPDATE file_cache SET last_accessed = ?1 WHERE media_id = ?2",
+            rusqlite::params![now, media_id],
+        )?;
+        Ok(())
+    }
+
+    /// Drop least-recently-used entries until total size fits under the cap.
+    /// Always leaves at least one entry behind so the just-cached file isn't
+    /// immediately evicted.
+    pub fn evict_if_needed(&self, conn: &Connection) -> Result<()> {
+        let mut total = self.total_size(conn)?;
+        if total <= self.max_bytes {
+            return Ok(());
+        }
+
+        // Oldest accessed first
+        let mut stmt = conn.prepare(
+            "SELECT media_id, cache_path, file_size FROM file_cache ORDER BY last_accessed ASC",
+        )?;
+        let rows: Vec<(String, String, i64)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        drop(stmt);
+
+        for (media_id, cache_path, file_size) in rows {
+            if total <= self.max_bytes {
+                break;
+            }
+            std::fs::remove_file(&cache_path).ok();
+            conn.execute(
+                "DELETE FROM file_cache WHERE media_id = ?1",
+                rusqlite::params![media_id],
+            )?;
+            // Also drop the cached waveform — it was tied to this file copy.
+            conn.execute(
+                "DELETE FROM waveform_cache WHERE media_id = ?1",
+                rusqlite::params![media_id],
+            )
+            .ok();
+            total = total.saturating_sub(file_size as u64);
+        }
+        Ok(())
     }
 
     pub fn total_size(&self, conn: &Connection) -> Result<u64> {
@@ -46,6 +148,7 @@ impl CacheManager {
         let paths: Vec<String> = stmt
             .query_map([], |row| row.get(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+        drop(stmt);
         for path in paths {
             std::fs::remove_file(&path).ok();
         }

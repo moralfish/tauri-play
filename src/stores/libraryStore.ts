@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { MediaItem, ScanResult, ScanProgress } from "../types";
 import * as api from "../api/commands";
 import { listen } from "@tauri-apps/api/event";
+import { usePlaybackStore } from "./playbackStore";
 
 const RECENT_FILES_LIMIT = 8;
 
@@ -116,6 +117,26 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         scanRecentFiles: [],
         scanError: e.payload,
       });
+    });
+
+    // A cloud track just finished hydrating into the local cache —
+    // refresh metadata in the library and reload the waveform if the
+    // newly cached track is the one currently playing.
+    listen<string>("media-cached", (e) => {
+      const mediaId = e.payload;
+      api.getMediaItems().then((items) => set({ items })).catch(console.error);
+      const playback = usePlaybackStore.getState();
+      if (playback.currentItem?.id === mediaId) {
+        api
+          .getWaveform(mediaId)
+          .then((peaks) => {
+            const current = usePlaybackStore.getState().currentItem;
+            if (current?.id === mediaId) {
+              usePlaybackStore.setState({ waveformPeaks: peaks });
+            }
+          })
+          .catch(() => {});
+      }
     });
   },
 }));
