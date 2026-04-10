@@ -20,10 +20,7 @@ pub fn run() {
             let db_conn = db::schema::init_db(app.handle())?;
             let db = Arc::new(std::sync::Mutex::new(db_conn));
 
-            let cache_manager = Arc::new(services::cache::CacheManager::new(
-                &app_dir,
-                2 * 1024 * 1024 * 1024, // 2GB default
-            ));
+            let cache_manager = Arc::new(services::cache::CacheManager::new(&app_dir));
 
             let app_state = state::AppState {
                 db: db.clone(),

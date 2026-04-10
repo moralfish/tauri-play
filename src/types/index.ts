@@ -40,6 +40,14 @@ export interface ScanResult {
   playlists_found: number;
 }
 
+export interface ScanProgress {
+  stage: string;
+  message: string;
+  current: number;
+  total: number;
+  currentFile: string | null;
+}
+
 export interface WriteMetadata {
   title?: string;
   artist?: string;

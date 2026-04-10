@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   MediaItem,
   Playlist,
-  ScanResult,
   WriteMetadata,
   CacheStats,
   GDriveStatus,
@@ -10,7 +9,7 @@ import type {
 } from "../types";
 
 // Library
-export const scanLibrary = () => invoke<ScanResult>("scan_library");
+export const scanLibrary = () => invoke<void>("scan_library");
 export const getMediaItems = () => invoke<MediaItem[]>("get_media_items");
 export const addDirectory = (path: string) => invoke("add_directory", { path });
 export const removeDirectory = (id: string) =>

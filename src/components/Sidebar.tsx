@@ -3,6 +3,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { usePlaylistStore } from "../stores/playlistStore";
 import { usePlaybackStore } from "../stores/playbackStore";
 import { useThemeStore } from "../stores/themeStore";
+import { useLibraryStore } from "../stores/libraryStore";
 
 interface SidebarProps {
   onViewChange: (view: "library" | "playlist" | "settings") => void;
@@ -195,6 +196,8 @@ export default function Sidebar({ onViewChange, currentView }: SidebarProps) {
   const toggleCollapse = usePlaybackStore((s) => s.toggleLeftSidebar);
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
+  const isScanning = useLibraryStore((s) => s.isScanning);
+  const showScanModal = useLibraryStore((s) => s.showScanModal);
 
   const cycleTheme = () => {
     const next = theme === "system" ? "light" : theme === "light" ? "dark" : "system";
@@ -248,8 +251,33 @@ export default function Sidebar({ onViewChange, currentView }: SidebarProps) {
         <RailIcon icon={icons.playlist} active={currentView === "playlist"} onClick={() => onViewChange("playlist")} title="Playlists" />
         <RailIcon icon={icons.recent} active={false} onClick={() => {}} title="Recently Played" />
 
-        {/* Theme toggle */}
+        {/* Spacer + bottom controls */}
         <div className="flex-1" />
+
+        {/* Scan progress indicator */}
+        {isScanning && (
+          <button
+            onClick={showScanModal}
+            className="relative w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150 hover:bg-[var(--bg-hover)]"
+            style={{ color: "var(--accent)" }}
+            title="Show scan progress"
+          >
+            <svg
+              className="animate-spin"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+          </button>
+        )}
+
+        {/* Theme toggle */}
         <RailIcon
           icon={
             theme === "light" ? (
@@ -289,6 +317,27 @@ export default function Sidebar({ onViewChange, currentView }: SidebarProps) {
           Tauri Play
         </span>
         <div className="ml-auto flex items-center gap-1">
+          {isScanning && (
+            <button
+              onClick={showScanModal}
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors duration-150 hover:bg-[var(--bg-hover)]"
+              style={{ color: 'var(--accent)' }}
+              title="Show scan progress"
+            >
+              <svg
+                className="animate-spin"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              >
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+            </button>
+          )}
           <button
             onClick={cycleTheme}
             className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors duration-150 hover:bg-[var(--bg-hover)]"

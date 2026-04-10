@@ -2,54 +2,241 @@ use crate::db::queries;
 use crate::models::MediaItem;
 use crate::providers::gdrive::{oauth::OAuthManager, GDriveProvider};
 use crate::providers::local::{self, LocalProvider};
-use crate::services::library::{self, ScanResult};
+use crate::providers::traits::MediaProvider;
+use crate::services::library::ScanResult;
 use crate::services::metadata::{self, WriteMetadata};
 use crate::state::AppState;
+use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScanProgress {
+    stage: String,
+    message: String,
+    current: usize,
+    total: usize,
+    current_file: Option<String>,
+}
+
+// Prevent overlapping scans across the whole app.
+static SCAN_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+fn emit_progress(app: &AppHandle, stage: &str, message: &str, current: usize, total: usize) {
+    let _ = app.emit(
+        "scan-progress",
+        ScanProgress {
+            stage: stage.to_string(),
+            message: message.to_string(),
+            current,
+            total,
+            current_file: None,
+        },
+    );
+}
 
 #[tauri::command]
-pub fn scan_library(state: State<'_, AppState>) -> Result<ScanResult, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+pub async fn scan_library(app: AppHandle) -> Result<(), String> {
+    // Guard against re-entry
+    if SCAN_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err("Scan already in progress".to_string());
+    }
 
-    // Get configured directories for local provider
-    let dirs = queries::get_scan_directories(&conn).map_err(|e| e.to_string())?;
-    let dir_paths: Vec<PathBuf> = dirs.iter().map(|(_, p)| PathBuf::from(p)).collect();
+    // Run the heavy work on a blocking thread so we don't lock up the IPC thread
+    // or the Tokio runtime. Errors are reported via events.
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = run_scan(&app_clone);
+        SCAN_IN_PROGRESS.store(false, Ordering::SeqCst);
 
-    // Update local provider with current directories
-    let local_provider = LocalProvider::new(dir_paths.clone());
+        match result {
+            Ok(scan_result) => {
+                let _ = app_clone.emit("scan-completed", &scan_result);
+                let _ = app_clone.emit("library-updated", ());
+            }
+            Err(err) => {
+                let _ = app_clone.emit("scan-error", err.to_string());
+            }
+        }
+    });
 
-    let mut providers = state.providers.lock().map_err(|e| e.to_string())?;
-    providers.retain(|p| p.id() != "local" && p.id() != "gdrive");
-    providers.push(Box::new(local_provider));
+    Ok(())
+}
 
-    // Add GDrive provider if configured and connected
-    if let Ok(Some((client_id, client_secret))) = queries::get_gdrive_config(&conn) {
-        let token_path = state.app_data_dir.join("gdrive_token.json");
-        if token_path.exists() {
-            let oauth = Arc::new(OAuthManager::new(
-                client_id,
-                client_secret,
-                state.app_data_dir.clone(),
-            ));
-            let gdrive_folders = queries::get_gdrive_scan_folders(&conn).unwrap_or_default();
-            let folder_ids: Vec<String> =
-                gdrive_folders.iter().map(|(_, fid, _)| fid.clone()).collect();
-            let gdrive_provider = GDriveProvider::new(oauth, folder_ids);
-            providers.push(Box::new(gdrive_provider));
+fn run_scan(app: &AppHandle) -> Result<ScanResult, String> {
+    let state: State<'_, AppState> = app.state();
+
+    emit_progress(app, "starting", "Preparing scan...", 0, 0);
+
+    let dir_paths: Vec<PathBuf>;
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let dirs = queries::get_scan_directories(&conn).map_err(|e| e.to_string())?;
+        dir_paths = dirs.iter().map(|(_, p)| PathBuf::from(p)).collect();
+    }
+
+    // Build a fresh providers list. We avoid holding the providers mutex
+    // across the long-running scan by collecting into a local Vec.
+    let mut local_providers: Vec<Box<dyn MediaProvider>> = Vec::new();
+    local_providers.push(Box::new(LocalProvider::new(dir_paths.clone())));
+
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        if let Ok(Some((client_id, client_secret))) = queries::get_gdrive_config(&conn) {
+            let token_path = state.app_data_dir.join("gdrive_token.json");
+            if token_path.exists() {
+                let oauth = Arc::new(OAuthManager::new(
+                    client_id,
+                    client_secret,
+                    state.app_data_dir.clone(),
+                ));
+                let gdrive_folders =
+                    queries::get_gdrive_scan_folders(&conn).unwrap_or_default();
+                let folder_ids: Vec<String> = gdrive_folders
+                    .iter()
+                    .map(|(_, fid, _)| fid.clone())
+                    .collect();
+                local_providers.push(Box::new(GDriveProvider::new(oauth, folder_ids)));
+            }
         }
     }
 
-    let result = library::scan_all(&providers, &conn).map_err(|e| e.to_string())?;
-
-    // Extract and store artwork from local files
-    let artwork_items = local::extract_artwork_from_items(&dir_paths);
-    for (hash, data, mime_type) in artwork_items {
-        queries::upsert_artwork(&conn, &hash, &data, &mime_type).ok();
+    // Mirror into shared state so other commands can still see them
+    {
+        let mut providers = state.providers.lock().map_err(|e| e.to_string())?;
+        providers.retain(|p| p.id() != "local" && p.id() != "gdrive");
+        // Re-construct fresh boxes for the shared list (cheap configuration data only)
+        providers.push(Box::new(LocalProvider::new(dir_paths.clone())));
     }
 
-    Ok(result)
+    let mut total_items = 0usize;
+    let mut total_playlists = 0usize;
+    let provider_count = local_providers.len();
+
+    // Clear old source playlists to avoid duplicates
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        queries::clear_source_playlists(&conn).map_err(|e| e.to_string())?;
+    }
+
+    for (idx, provider) in local_providers.iter().enumerate() {
+        let label = match provider.id() {
+            "local" => "Scanning local files",
+            "gdrive" => "Scanning Google Drive",
+            other => other,
+        };
+        emit_progress(app, "provider", label, idx, provider_count);
+
+        // Stream items into the DB as they're discovered so they become
+        // visible/playable as soon as the scan finishes — instead of waiting
+        // for the entire (potentially very long) discovery walk to complete.
+        let imported = AtomicUsize::new(0);
+        let db = state.db.clone();
+        let app_for_item = app.clone();
+        let app_for_status = app.clone();
+        let label_for_item = label.to_string();
+        let label_for_status = label.to_string();
+
+        let scan_result = provider.scan_streaming(
+            &|item: MediaItem| {
+                if let Ok(conn) = db.lock() {
+                    if let Err(e) = queries::upsert_media_item(&conn, &item) {
+                        eprintln!("Failed to upsert media item: {}", e);
+                        return;
+                    }
+                }
+                let n = imported.fetch_add(1, Ordering::SeqCst) + 1;
+                let _ = app_for_item.emit(
+                    "scan-progress",
+                    ScanProgress {
+                        stage: "items".to_string(),
+                        message: format!("{}: imported {} files", label_for_item, n),
+                        current: n,
+                        total: 0,
+                        current_file: Some(item.name.clone()),
+                    },
+                );
+            },
+            &|msg, file| {
+                let _ = app_for_status.emit(
+                    "scan-progress",
+                    ScanProgress {
+                        stage: "discovering".to_string(),
+                        message: format!("{}: {}", label_for_status, msg),
+                        current: 0,
+                        total: 0,
+                        current_file: file.map(|s| s.to_string()),
+                    },
+                );
+            },
+        );
+        scan_result.map_err(|e| e.to_string())?;
+        total_items += imported.load(Ordering::SeqCst);
+
+        // Source playlists
+        emit_progress(app, "playlists", "Importing playlists...", idx, provider_count);
+        let playlists = provider.detect_playlists().map_err(|e| e.to_string())?;
+        {
+            let conn = state.db.lock().map_err(|e| e.to_string())?;
+            for (playlist, playlist_items) in &playlists {
+                for item in playlist_items {
+                    queries::upsert_media_item(&conn, item).map_err(|e| e.to_string())?;
+                }
+                queries::insert_playlist(&conn, playlist).map_err(|e| e.to_string())?;
+                for (i, item) in playlist_items.iter().enumerate() {
+                    let actual_id = queries::get_media_id_by_source(
+                        &conn,
+                        &item.source_type,
+                        &item.external_id,
+                    )
+                    .map_err(|e| e.to_string())?
+                    .unwrap_or_else(|| item.id.clone());
+                    let entry_id = uuid::Uuid::new_v4().to_string();
+                    let _ = queries::add_playlist_entry(
+                        &conn,
+                        &entry_id,
+                        &playlist.id,
+                        &actual_id,
+                        i as i32,
+                    );
+                }
+            }
+        }
+        total_playlists += playlists.len();
+    }
+
+    // Extract and store artwork from local files
+    emit_progress(app, "artwork", "Extracting artwork...", 0, 0);
+    let artwork_items = local::extract_artwork_from_items(&dir_paths);
+    let artwork_total = artwork_items.len();
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        for (i, (hash, data, mime_type)) in artwork_items.into_iter().enumerate() {
+            queries::upsert_artwork(&conn, &hash, &data, &mime_type).ok();
+            if i % 10 == 0 || i + 1 == artwork_total {
+                emit_progress(
+                    app,
+                    "artwork",
+                    &format!("Extracting artwork ({}/{})", i + 1, artwork_total),
+                    i + 1,
+                    artwork_total,
+                );
+            }
+        }
+    }
+
+    emit_progress(app, "done", "Finalizing...", total_items, total_items);
+
+    Ok(ScanResult {
+        items_found: total_items,
+        playlists_found: total_playlists,
+    })
 }
 
 #[tauri::command]

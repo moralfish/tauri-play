@@ -6,6 +6,7 @@ import PlaylistView from "./components/PlaylistView";
 import Settings from "./components/Settings";
 import Player from "./components/Player";
 import NowPlayingPanel from "./components/NowPlayingPanel";
+import ScanProgressModal from "./components/ScanProgressModal";
 import { useThemeStore } from "./stores/themeStore";
 import { usePlaybackStore } from "./stores/playbackStore";
 
@@ -84,12 +85,15 @@ function App() {
   };
 
   return (
-    <Layout
-      sidebar={<Sidebar onViewChange={setView} currentView={view} />}
-      content={renderContent()}
-      player={<Player />}
-      rightPanel={<NowPlayingPanel />}
-    />
+    <>
+      <Layout
+        sidebar={<Sidebar onViewChange={setView} currentView={view} />}
+        content={renderContent()}
+        player={<Player />}
+        rightPanel={<NowPlayingPanel />}
+      />
+      <ScanProgressModal />
+    </>
   );
 }
 

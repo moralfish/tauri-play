@@ -1,4 +1,4 @@
-use crate::models::{MediaItem, MediaKind, Playlist, PlaylistEntry};
+use crate::models::{MediaItem, MediaKind, Playlist};
 use anyhow::Result;
 use rusqlite::{params, Connection};
 
@@ -155,23 +155,6 @@ pub fn rename_playlist(conn: &Connection, id: &str, new_name: &str) -> Result<()
 }
 
 // --- Playlist Entries ---
-
-pub fn get_playlist_entries(conn: &Connection, playlist_id: &str) -> Result<Vec<PlaylistEntry>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, playlist_id, media_id, position FROM playlist_entries WHERE playlist_id = ?1 ORDER BY position",
-    )?;
-    let entries = stmt
-        .query_map(params![playlist_id], |row| {
-            Ok(PlaylistEntry {
-                id: row.get(0)?,
-                playlist_id: row.get(1)?,
-                media_id: row.get(2)?,
-                position: row.get(3)?,
-            })
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(entries)
-}
 
 pub fn get_playlist_tracks(conn: &Connection, playlist_id: &str) -> Result<Vec<MediaItem>> {
     let mut stmt = conn.prepare(&format!(

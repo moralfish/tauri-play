@@ -1,5 +1,5 @@
 use crate::models::{MediaItem, MediaKind, Playlist};
-use crate::providers::traits::MediaProvider;
+use crate::providers::traits::{MediaProvider, ScanItemFn, ScanProgressFn};
 use crate::services::metadata;
 use anyhow::Result;
 use sha2::{Sha256, Digest};
@@ -146,13 +146,17 @@ impl MediaProvider for LocalProvider {
         "local"
     }
 
-    fn scan(&self) -> Result<Vec<MediaItem>> {
-        let mut items = Vec::new();
-
+    fn scan_streaming(
+        &self,
+        on_item: ScanItemFn<'_>,
+        on_progress: ScanProgressFn<'_>,
+    ) -> Result<()> {
+        let mut count = 0usize;
         for dir in &self.directories {
             if !dir.exists() {
                 continue;
             }
+            on_progress(&format!("Scanning {}", dir.display()), None);
             for entry in WalkDir::new(dir).follow_links(true).into_iter().flatten() {
                 if !entry.file_type().is_file() {
                     continue;
@@ -166,15 +170,14 @@ impl MediaProvider for LocalProvider {
                     Some(k) => k,
                     None => continue,
                 };
-                items.push(Self::build_media_item(path, ext, kind));
+                let item = Self::build_media_item(path, ext, kind);
+                let display_name = item.name.clone();
+                count += 1;
+                on_progress(&format!("Discovered {} files", count), Some(&display_name));
+                on_item(item);
             }
         }
-
-        Ok(items)
-    }
-
-    fn get_stream_url(&self, media: &MediaItem) -> Result<String> {
-        Ok(format!("http://127.0.0.1:9876/stream/{}", media.id))
+        Ok(())
     }
 
     fn detect_playlists(&self) -> Result<Vec<(Playlist, Vec<MediaItem>)>> {

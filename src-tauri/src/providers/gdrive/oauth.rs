@@ -141,14 +141,4 @@ impl OAuthManager {
         )
     }
 
-    pub fn has_token(&self) -> bool {
-        self.token_path.exists()
-    }
-
-    pub fn disconnect(&self) -> Result<()> {
-        if self.token_path.exists() {
-            std::fs::remove_file(&self.token_path)?;
-        }
-        Ok(())
-    }
 }
