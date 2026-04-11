@@ -86,6 +86,11 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         set_user_version(conn, 3)?;
     }
 
+    if version < 4 {
+        migrate_v4(conn)?;
+        set_user_version(conn, 4)?;
+    }
+
     Ok(())
 }
 
@@ -199,6 +204,49 @@ fn migrate_v3(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_media_items_gdrive_folder \
          ON media_items(gdrive_parent_folder_id);",
+    )?;
+
+    Ok(())
+}
+
+fn migrate_v4(conn: &Connection) -> Result<()> {
+    // Play history (one row per play event), favorites (set of liked ids),
+    // and a per-item `play_count` counter. These back the new Home screen's
+    // Recently Played / Most Played / Back in Rotation / Late Night / Favorites
+    // sections and also let the transport bar's heart button toggle favorite
+    // state. History rows cascade with media_items so removing a track also
+    // cleans up its listen history and favorite flag.
+    let play_count_exists: bool = conn
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('media_items') WHERE name = 'play_count'",
+        )?
+        .query_row([], |row| row.get::<_, i32>(0))
+        .map(|count| count > 0)?;
+    if !play_count_exists {
+        conn.execute_batch(
+            "ALTER TABLE media_items ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0;",
+        )?;
+    }
+
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS play_history (
+            id TEXT PRIMARY KEY,
+            media_id TEXT NOT NULL,
+            played_at INTEGER NOT NULL,
+            FOREIGN KEY (media_id) REFERENCES media_items(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_play_history_played_at
+            ON play_history(played_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_play_history_media_id
+            ON play_history(media_id);
+
+        CREATE TABLE IF NOT EXISTS favorites (
+            media_id TEXT PRIMARY KEY,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (media_id) REFERENCES media_items(id) ON DELETE CASCADE
+        );
+        ",
     )?;
 
     Ok(())

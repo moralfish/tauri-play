@@ -26,6 +26,17 @@
   --waveform-playhead: rgba(255,255,255,0.5);
   --player-button-bg: rgba(255,255,255,0.10);
   --player-button-hover: rgba(255,255,255,0.15);
+
+  /* Shape + rhythm tokens (v0.3.0 redesign).
+     Everything with a border-radius in the app should reference one of
+     these four radii so the visual system stays cohesive. Spacing tokens
+     drive the Home screen's vertical rhythm and horizontal card gutters. */
+  --radius-panel: 20px;   /* outer shell frames (Layout zones) */
+  --radius-card: 14px;    /* home cards, library grid cells */
+  --radius-control: 10px; /* buttons, inputs, dropdowns */
+  --radius-chip: 999px;   /* filter pills, quick actions */
+  --space-section: 32px;  /* vertical rhythm between Home sections */
+  --space-gutter: 20px;   /* card-to-card horizontal gap */
 }
 
 :root[data-theme="light"] {

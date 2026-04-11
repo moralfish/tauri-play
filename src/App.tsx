@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Layout from "./components/Layout";
 import Sidebar from "./components/Sidebar";
+import Home from "./components/Home";
 import Library from "./components/Library";
 import PlaylistView from "./components/PlaylistView";
 import Settings from "./components/Settings";
@@ -11,8 +12,9 @@ import { ConfirmProvider } from "./components/ConfirmDialog";
 import { useThemeStore } from "./stores/themeStore";
 import { usePlaybackStore } from "./stores/playbackStore";
 import { useLibraryStore } from "./stores/libraryStore";
+import { useHomeStore } from "./stores/homeStore";
 
-type View = "library" | "playlist" | "settings";
+type View = "home" | "library" | "playlist" | "settings";
 
 function StartupSpinner() {
   return (
@@ -37,7 +39,7 @@ function StartupSpinner() {
 }
 
 function App() {
-  const [view, setView] = useState<View>("library");
+  const [view, setView] = useState<View>("home");
   const isLoading = useLibraryStore((s) => s.isLoading);
   const itemCount = useLibraryStore((s) => s.items.length);
 
@@ -48,11 +50,14 @@ function App() {
 
   // Hoist initial library load + event listener setup to App level so the
   // tab views never have to refetch on mount. This is what eliminates the
-  // visible latency when switching between Library and Settings.
+  // visible latency when switching between Library and Settings. The home
+  // store mirrors the same pattern — its `initEventListeners` kicks off
+  // the initial fan-out fetch of all Home sections.
   useEffect(() => {
     const lib = useLibraryStore.getState();
     lib.initEventListeners();
     lib.refresh();
+    useHomeStore.getState().initEventListeners();
   }, []);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -116,11 +121,17 @@ function App() {
     return <StartupSpinner />;
   }
 
-  // Keep-alive routing: all three views stay mounted and we just toggle
+  // Keep-alive routing: all four views stay mounted and we just toggle
   // their visibility. Switching tabs becomes free (no unmount, no refetch,
   // no re-running of useEffects, scroll position preserved).
   const content = (
     <>
+      <div
+        className="h-full w-full"
+        style={{ display: view === "home" ? "flex" : "none", flexDirection: "column" }}
+      >
+        <Home onNavigateLibrary={() => setView("library")} />
+      </div>
       <div
         className="h-full w-full"
         style={{ display: view === "library" ? "flex" : "none", flexDirection: "column" }}

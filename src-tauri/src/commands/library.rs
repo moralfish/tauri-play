@@ -349,7 +349,9 @@ pub fn delete_media_items(
 }
 
 /// Nuke every track from the library. Source configuration (scan dirs,
-/// gdrive folders) is left alone — the user can rescan any time.
+/// gdrive folders) is left alone — the user can rescan any time. The
+/// media_cache folder is wiped as well: those cached downloads are all
+/// tied to media_items that no longer exist.
 #[tauri::command]
 pub fn flush_library(
     app: AppHandle,
@@ -359,6 +361,8 @@ pub fn flush_library(
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         let n = queries::delete_all_media_items(&conn).map_err(|e| e.to_string())?;
         queries::prune_orphan_artwork(&conn).ok();
+        // Fire-and-forget: a failure here must not block the flush itself.
+        state.cache_manager.clear_all(&conn).ok();
         n
     };
     let _ = app.emit("library-updated", ());

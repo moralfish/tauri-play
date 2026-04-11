@@ -48,6 +48,21 @@ pub struct MediaItem {
     /// tracks that folder sourced. None for local items.
     #[serde(default)]
     pub gdrive_parent_folder_id: Option<String>,
+    /// Number of times this track has been played. Incremented inside
+    /// `commands::playback::play`. Defaults to 0 for rows that pre-date the
+    /// v4 migration.
+    #[serde(default)]
+    pub play_count: u32,
+    /// Epoch-ms timestamp of the most recent `play_history` entry for this
+    /// track. Derived via a LEFT JOIN in `get_all_media_items`; `None` for
+    /// tracks that have never been played.
+    #[serde(default)]
+    pub last_played_at: Option<i64>,
+    /// Whether the user has marked this track as a favorite. Derived via
+    /// LEFT JOIN on the `favorites` table — not persisted on the
+    /// `media_items` row itself, so `upsert_media_item` ignores this field.
+    #[serde(default)]
+    pub is_favorite: bool,
 }
 
 impl MediaItem {
@@ -81,6 +96,9 @@ impl MediaItem {
             file_size: None,
             last_modified: None,
             gdrive_parent_folder_id: None,
+            play_count: 0,
+            last_played_at: None,
+            is_favorite: false,
         }
     }
 }

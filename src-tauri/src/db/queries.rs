@@ -72,18 +72,41 @@ fn row_to_media_item(row: &rusqlite::Row) -> rusqlite::Result<MediaItem> {
         file_size: row.get(16)?,
         last_modified: row.get(17)?,
         gdrive_parent_folder_id: row.get(18)?,
+        play_count: row.get::<_, Option<i32>>(19)?.unwrap_or(0) as u32,
+        last_played_at: row.get(20)?,
+        is_favorite: row.get::<_, Option<i64>>(21)?.is_some(),
     })
 }
 
+/// Column list used for every `SELECT ... FROM media_items m` that wants a
+/// full `MediaItem` back. The last three columns come from LEFT JOINs so
+/// they're nullable: `play_count` defaults to 0, `last_played_at` stays None
+/// for never-played tracks, and `is_favorite` is derived from whether the
+/// `favorites` join produced a row.
 const MEDIA_ITEM_COLS: &str =
-    "id, source_id, source_type, external_id, name, mime_type, kind, \
-     title, artist, album, album_artist, track_number, duration_secs, year, genre, \
-     artwork_hash, file_size, last_modified, gdrive_parent_folder_id";
+    "m.id, m.source_id, m.source_type, m.external_id, m.name, m.mime_type, m.kind, \
+     m.title, m.artist, m.album, m.album_artist, m.track_number, m.duration_secs, m.year, m.genre, \
+     m.artwork_hash, m.file_size, m.last_modified, m.gdrive_parent_folder_id, \
+     COALESCE(m.play_count, 0) AS play_count, \
+     ph.last_played_at AS last_played_at, \
+     f.media_id AS favorite_id";
+
+/// Standard FROM + LEFT JOINs that materialize `last_played_at` and
+/// `is_favorite` alongside every media row. All `SELECT MEDIA_ITEM_COLS ...`
+/// callers need to use this clause so the column indices match
+/// `row_to_media_item`.
+const MEDIA_ITEM_JOINS: &str =
+    "FROM media_items m \
+     LEFT JOIN (SELECT media_id, MAX(played_at) AS last_played_at \
+                FROM play_history GROUP BY media_id) ph ON ph.media_id = m.id \
+     LEFT JOIN favorites f ON f.media_id = m.id";
 
 pub fn get_all_media_items(conn: &Connection) -> Result<Vec<MediaItem>> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {} FROM media_items ORDER BY COALESCE(artist, ''), COALESCE(album, ''), COALESCE(track_number, 999), name",
-        MEDIA_ITEM_COLS
+        "SELECT {cols} {joins} \
+         ORDER BY COALESCE(m.artist, ''), COALESCE(m.album, ''), COALESCE(m.track_number, 999), m.name",
+        cols = MEDIA_ITEM_COLS,
+        joins = MEDIA_ITEM_JOINS,
     ))?;
     let items = stmt
         .query_map([], |row| row_to_media_item(row))?
@@ -97,12 +120,13 @@ pub fn get_all_media_items(conn: &Connection) -> Result<Vec<MediaItem>> {
 /// real titles/artists/album art without having to actually play each one.
 pub fn get_gdrive_items_needing_metadata(conn: &Connection) -> Result<Vec<MediaItem>> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {} FROM media_items \
-         WHERE source_type = 'gdrive' \
-           AND title IS NULL \
-           AND artist IS NULL \
-           AND duration_secs IS NULL",
-        MEDIA_ITEM_COLS
+        "SELECT {cols} {joins} \
+         WHERE m.source_type = 'gdrive' \
+           AND m.title IS NULL \
+           AND m.artist IS NULL \
+           AND m.duration_secs IS NULL",
+        cols = MEDIA_ITEM_COLS,
+        joins = MEDIA_ITEM_JOINS,
     ))?;
     let items = stmt
         .query_map([], |row| row_to_media_item(row))?
@@ -112,8 +136,9 @@ pub fn get_gdrive_items_needing_metadata(conn: &Connection) -> Result<Vec<MediaI
 
 pub fn get_media_item_by_id(conn: &Connection, id: &str) -> Result<Option<MediaItem>> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {} FROM media_items WHERE id = ?1",
-        MEDIA_ITEM_COLS
+        "SELECT {cols} {joins} WHERE m.id = ?1",
+        cols = MEDIA_ITEM_COLS,
+        joins = MEDIA_ITEM_JOINS,
     ))?;
     let mut rows = stmt.query_map(params![id], |row| row_to_media_item(row))?;
     Ok(rows.next().transpose()?)
@@ -172,6 +197,222 @@ pub fn prune_orphan_artwork(conn: &Connection) -> Result<usize> {
         [],
     )?;
     Ok(n)
+}
+
+// --- Play history / favorites / Home queries ---
+
+/// Record a single play event and bump `media_items.play_count` by 1.
+/// Errors bubble up to the caller, but the caller in `commands::playback::play`
+/// deliberately ignores them — history is best-effort, playback must not
+/// fail because the history row couldn't be written.
+pub fn record_play(conn: &Connection, media_id: &str, played_at_ms: i64) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    let entry_id = uuid::Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO play_history (id, media_id, played_at) VALUES (?1, ?2, ?3)",
+        params![entry_id, media_id, played_at_ms],
+    )?;
+    tx.execute(
+        "UPDATE media_items SET play_count = COALESCE(play_count, 0) + 1 WHERE id = ?1",
+        params![media_id],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Most recent plays first, deduped by media_id. Used by the Home screen's
+/// "Recently Played" scroller.
+pub fn get_recently_played(conn: &Connection, limit: usize) -> Result<Vec<MediaItem>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {cols} \
+         {joins} \
+         WHERE ph.last_played_at IS NOT NULL \
+         ORDER BY ph.last_played_at DESC \
+         LIMIT ?1",
+        cols = MEDIA_ITEM_COLS,
+        joins = MEDIA_ITEM_JOINS,
+    ))?;
+    let items = stmt
+        .query_map(params![limit as i64], |row| row_to_media_item(row))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(items)
+}
+
+/// Highest play_count first, tiebroken by most recent play. Used by the
+/// Home screen's "Most Played" row.
+pub fn get_most_played(conn: &Connection, limit: usize) -> Result<Vec<MediaItem>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {cols} \
+         {joins} \
+         WHERE COALESCE(m.play_count, 0) > 0 \
+         ORDER BY m.play_count DESC, ph.last_played_at DESC \
+         LIMIT ?1",
+        cols = MEDIA_ITEM_COLS,
+        joins = MEDIA_ITEM_JOINS,
+    ))?;
+    let items = stmt
+        .query_map(params![limit as i64], |row| row_to_media_item(row))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(items)
+}
+
+/// Most recently added to the library, by file mtime. Used by the Home
+/// screen's "Recently Added" quick-action filter.
+pub fn get_recently_added(conn: &Connection, limit: usize) -> Result<Vec<MediaItem>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {cols} \
+         {joins} \
+         WHERE m.last_modified IS NOT NULL \
+         ORDER BY m.last_modified DESC \
+         LIMIT ?1",
+        cols = MEDIA_ITEM_COLS,
+        joins = MEDIA_ITEM_JOINS,
+    ))?;
+    let items = stmt
+        .query_map(params![limit as i64], |row| row_to_media_item(row))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(items)
+}
+
+/// Tracks the user has played at least once but not within `min_age_secs`.
+/// Used by "Library Highlights – Back in Rotation" on Home.
+pub fn get_back_in_rotation(
+    conn: &Connection,
+    limit: usize,
+    min_age_secs: i64,
+) -> Result<Vec<MediaItem>> {
+    let cutoff_ms = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0))
+        - min_age_secs * 1000;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {cols} \
+         {joins} \
+         WHERE COALESCE(m.play_count, 0) > 0 \
+           AND ph.last_played_at IS NOT NULL \
+           AND ph.last_played_at < ?1 \
+         ORDER BY m.play_count DESC, ph.last_played_at ASC \
+         LIMIT ?2",
+        cols = MEDIA_ITEM_COLS,
+        joins = MEDIA_ITEM_JOINS,
+    ))?;
+    let items = stmt
+        .query_map(params![cutoff_ms, limit as i64], |row| row_to_media_item(row))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(items)
+}
+
+/// Tracks the user has played late-night (22:00-05:00 local time), ordered
+/// by how often they've been played in that window. Used by the "Late Night
+/// Tracks" smart suggestion card.
+pub fn get_late_night_tracks(conn: &Connection, limit: usize) -> Result<Vec<MediaItem>> {
+    // `played_at` is stored in epoch-ms. SQLite's strftime() takes epoch
+    // seconds, so we divide by 1000 first. 'localtime' converts to the
+    // user's timezone before slicing the hour.
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {cols}, COUNT(ph2.id) AS night_plays \
+         {joins} \
+         JOIN play_history ph2 ON ph2.media_id = m.id \
+         WHERE CAST(strftime('%H', ph2.played_at / 1000, 'unixepoch', 'localtime') AS INTEGER) \
+               IN (22, 23, 0, 1, 2, 3, 4, 5) \
+         GROUP BY m.id \
+         ORDER BY night_plays DESC, ph.last_played_at DESC \
+         LIMIT ?1",
+        cols = MEDIA_ITEM_COLS,
+        joins = MEDIA_ITEM_JOINS,
+    ))?;
+    let items = stmt
+        .query_map(params![limit as i64], |row| row_to_media_item(row))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(items)
+}
+
+/// Tracks whose genre tag matches a high-energy list. Uses RANDOM() so the
+/// card stays fresh across visits. Used by the "High Energy Session" smart
+/// suggestion card.
+pub fn get_high_energy_tracks(conn: &Connection, limit: usize) -> Result<Vec<MediaItem>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {cols} \
+         {joins} \
+         WHERE m.genre IS NOT NULL AND ( \
+            LOWER(m.genre) LIKE '%house%' OR \
+            LOWER(m.genre) LIKE '%techno%' OR \
+            LOWER(m.genre) LIKE '%trance%' OR \
+            LOWER(m.genre) LIKE '%dnb%' OR \
+            LOWER(m.genre) LIKE '%drum%' OR \
+            LOWER(m.genre) LIKE '%electro%' OR \
+            LOWER(m.genre) LIKE '%rock%' OR \
+            LOWER(m.genre) LIKE '%punk%' OR \
+            LOWER(m.genre) LIKE '%metal%' \
+         ) \
+         ORDER BY RANDOM() \
+         LIMIT ?1",
+        cols = MEDIA_ITEM_COLS,
+        joins = MEDIA_ITEM_JOINS,
+    ))?;
+    let items = stmt
+        .query_map(params![limit as i64], |row| row_to_media_item(row))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(items)
+}
+
+/// Toggle a track's favorite state. Returns `true` if the track is now a
+/// favorite (row inserted), `false` if it was removed.
+pub fn toggle_favorite(conn: &Connection, media_id: &str) -> Result<bool> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM favorites WHERE media_id = ?1",
+            params![media_id],
+            |_| Ok(()),
+        )
+        .is_ok();
+    if exists {
+        conn.execute(
+            "DELETE FROM favorites WHERE media_id = ?1",
+            params![media_id],
+        )?;
+        Ok(false)
+    } else {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        conn.execute(
+            "INSERT INTO favorites (media_id, created_at) VALUES (?1, ?2)",
+            params![media_id, now_ms],
+        )?;
+        Ok(true)
+    }
+}
+
+/// All favorited media ids — used on app startup to populate the playback
+/// store's favorites cache so the heart icon can render correctly without
+/// a per-track round trip.
+pub fn get_favorite_ids(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT media_id FROM favorites")?;
+    let ids = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(ids)
+}
+
+/// Favorited tracks, most-recently-favorited first. Used by the Home
+/// screen's optional "Favorites" row.
+pub fn get_favorites(conn: &Connection, limit: usize) -> Result<Vec<MediaItem>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {cols} \
+         {joins} \
+         WHERE f.media_id IS NOT NULL \
+         ORDER BY f.created_at DESC \
+         LIMIT ?1",
+        cols = MEDIA_ITEM_COLS,
+        joins = MEDIA_ITEM_JOINS,
+    ))?;
+    let items = stmt
+        .query_map(params![limit as i64], |row| row_to_media_item(row))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(items)
 }
 
 // --- Artwork ---
@@ -235,16 +476,13 @@ pub fn rename_playlist(conn: &Connection, id: &str, new_name: &str) -> Result<()
 
 pub fn get_playlist_tracks(conn: &Connection, playlist_id: &str) -> Result<Vec<MediaItem>> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT m.{cols}
-         FROM media_items m
-         JOIN playlist_entries pe ON pe.media_id = m.id
-         WHERE pe.playlist_id = ?1
+        "SELECT {cols} \
+         {joins} \
+         JOIN playlist_entries pe ON pe.media_id = m.id \
+         WHERE pe.playlist_id = ?1 \
          ORDER BY pe.position",
-        cols = MEDIA_ITEM_COLS
-            .split(", ")
-            .map(|c| format!("m.{}", c))
-            .collect::<Vec<_>>()
-            .join(", ")
+        cols = MEDIA_ITEM_COLS,
+        joins = MEDIA_ITEM_JOINS,
     ))?;
     let items = stmt
         .query_map(params![playlist_id], |row| row_to_media_item(row))?

@@ -26,6 +26,20 @@ pub fn play(state: State<'_, AppState>, media_id: String) -> Result<String, Stri
         }
     }
 
+    // Best-effort play history logging. Any error here is swallowed — a
+    // failing INSERT into `play_history` must never block playback. The row
+    // drives the Home screen's Recently Played / Most Played / Back in
+    // Rotation / Late Night sections and also bumps `media_items.play_count`.
+    {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        if let Ok(conn) = state.db.lock() {
+            let _ = queries::record_play(&conn, &media_id, now_ms);
+        }
+    }
+
     Ok(url)
 }
 

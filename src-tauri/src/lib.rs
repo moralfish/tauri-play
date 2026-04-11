@@ -91,6 +91,15 @@ pub fn run() {
             commands::gdrive::add_gdrive_folder,
             commands::gdrive::remove_gdrive_folder,
             commands::gdrive::get_gdrive_folders,
+            commands::home::get_recently_played,
+            commands::home::get_most_played,
+            commands::home::get_recently_added,
+            commands::home::get_back_in_rotation,
+            commands::home::get_late_night_tracks,
+            commands::home::get_high_energy_tracks,
+            commands::home::get_favorites,
+            commands::home::get_favorite_ids,
+            commands::home::toggle_favorite,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

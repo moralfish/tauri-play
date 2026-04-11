@@ -1,4 +1,5 @@
 pub mod gdrive;
+pub mod home;
 pub mod library;
 pub mod playback;
 pub mod playlist;

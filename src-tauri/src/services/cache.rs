@@ -181,6 +181,7 @@ impl CacheManager {
     }
 
     pub fn clear_all(&self, conn: &Connection) -> Result<()> {
+        // First pass: delete every file we know about via the file_cache table.
         let mut stmt = conn.prepare("SELECT cache_path FROM file_cache")?;
         let paths: Vec<String> = stmt
             .query_map([], |row| row.get(0))?
@@ -190,6 +191,31 @@ impl CacheManager {
             std::fs::remove_file(&path).ok();
         }
         conn.execute_batch("DELETE FROM file_cache")?;
+        // Also drop every cached waveform — the audio they were derived
+        // from is gone, so they would only bloat the sqlite file.
+        conn.execute_batch("DELETE FROM waveform_cache").ok();
+
+        // Second pass: scrub the cache directory itself. Any stray file
+        // that wasn't tracked in `file_cache` (e.g. left over from an
+        // aborted download, a previous app version, or a crash between
+        // `fs::write` and `cache_manager.register`) still counts as
+        // disk usage from the user's perspective, so they should be
+        // removed when they click "Clear cache".
+        if self.cache_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&self.cache_dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        std::fs::remove_dir_all(&p).ok();
+                    } else {
+                        std::fs::remove_file(&p).ok();
+                    }
+                }
+            }
+            // Re-create in case the directory itself was somehow removed
+            // alongside its contents — downstream code assumes it exists.
+            std::fs::create_dir_all(&self.cache_dir).ok();
+        }
         Ok(())
     }
 }

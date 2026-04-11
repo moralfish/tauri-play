@@ -6,8 +6,8 @@ import { useThemeStore } from "../stores/themeStore";
 import { useLibraryStore } from "../stores/libraryStore";
 
 interface SidebarProps {
-  onViewChange: (view: "library" | "playlist" | "settings") => void;
-  currentView: "library" | "playlist" | "settings";
+  onViewChange: (view: "home" | "library" | "playlist" | "settings") => void;
+  currentView: "home" | "library" | "playlist" | "settings";
 }
 
 function DroppablePlaylistItem({
@@ -146,11 +146,6 @@ const icons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
     </svg>
   ),
-  queue: (
-    <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
-    </svg>
-  ),
   playlist: (
     <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
@@ -188,10 +183,6 @@ export default function Sidebar({ onViewChange, currentView }: SidebarProps) {
     createPlaylist,
     deletePlaylist,
   } = usePlaylistStore();
-  const toggleQueue = usePlaybackStore((s) => s.toggleQueue);
-  const showQueue = usePlaybackStore((s) => s.showQueue);
-  const queue = usePlaybackStore((s) => s.queue);
-  const queueIndex = usePlaybackStore((s) => s.queueIndex);
   const collapsed = usePlaybackStore((s) => s.leftSidebarCollapsed);
   const toggleCollapse = usePlaybackStore((s) => s.toggleLeftSidebar);
   const theme = useThemeStore((s) => s.theme);
@@ -225,7 +216,6 @@ export default function Sidebar({ onViewChange, currentView }: SidebarProps) {
     onViewChange("playlist");
   };
 
-  const upNextCount = queue.length - queueIndex - 1;
   const filteredPlaylists = playlists.filter(
     (p) => !searchQuery.trim() || p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -245,11 +235,9 @@ export default function Sidebar({ onViewChange, currentView }: SidebarProps) {
         </button>
 
         {/* Nav icons */}
-        <RailIcon icon={icons.home} active={currentView === "library" && !activePlaylistId} onClick={() => { selectPlaylist(null); onViewChange("library"); }} title="Home" />
-        <RailIcon icon={icons.library} active={currentView === "library" && !!activePlaylistId} onClick={() => { selectPlaylist(null); onViewChange("library"); }} title="Library" />
-        <RailIcon icon={icons.queue} active={showQueue} onClick={toggleQueue} title="Queue" badge={upNextCount > 0 ? upNextCount : undefined} />
+        <RailIcon icon={icons.home} active={currentView === "home"} onClick={() => { selectPlaylist(null); onViewChange("home"); }} title="Home" />
+        <RailIcon icon={icons.library} active={currentView === "library"} onClick={() => { selectPlaylist(null); onViewChange("library"); }} title="Library" />
         <RailIcon icon={icons.playlist} active={currentView === "playlist"} onClick={() => onViewChange("playlist")} title="Playlists" />
-        <RailIcon icon={icons.recent} active={false} onClick={() => {}} title="Recently Played" />
 
         {/* Spacer + bottom controls */}
         <div className="flex-1" />
@@ -376,27 +364,14 @@ export default function Sidebar({ onViewChange, currentView }: SidebarProps) {
         <NavItem
           icon={icons.home}
           label="Home"
-          active={currentView === "library" && !activePlaylistId}
-          onClick={() => { selectPlaylist(null); onViewChange("library"); }}
+          active={currentView === "home"}
+          onClick={() => { selectPlaylist(null); onViewChange("home"); }}
         />
         <NavItem
           icon={icons.library}
           label="Library"
-          active={currentView === "library" && !!activePlaylistId}
+          active={currentView === "library"}
           onClick={() => { selectPlaylist(null); onViewChange("library"); }}
-        />
-        <NavItem
-          icon={icons.queue}
-          label="Queue"
-          active={showQueue}
-          onClick={toggleQueue}
-          badge={upNextCount > 0 ? upNextCount : undefined}
-        />
-        <NavItem
-          icon={icons.recent}
-          label="Recently Played"
-          active={false}
-          onClick={() => {}}
         />
       </div>
 

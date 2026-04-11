@@ -83,6 +83,28 @@ export const removeGDriveFolder = (folderId: string) =>
 export const getGDriveFolders = () =>
   invoke<GDriveFolder[]>("get_gdrive_folders");
 
+// Home screen / favorites
+// Each of these hits a dedicated SQL query in the backend that returns a
+// ready-to-render `MediaItem[]`. The frontend `homeStore` fans them out in
+// `Promise.all` on mount + on debounced library/playback updates.
+export const getRecentlyPlayed = (limit?: number) =>
+  invoke<MediaItem[]>("get_recently_played", { limit });
+export const getMostPlayed = (limit?: number) =>
+  invoke<MediaItem[]>("get_most_played", { limit });
+export const getRecentlyAdded = (limit?: number) =>
+  invoke<MediaItem[]>("get_recently_added", { limit });
+export const getBackInRotation = (limit?: number, minAgeSecs?: number) =>
+  invoke<MediaItem[]>("get_back_in_rotation", { limit, minAgeSecs });
+export const getLateNightTracks = (limit?: number) =>
+  invoke<MediaItem[]>("get_late_night_tracks", { limit });
+export const getHighEnergyTracks = (limit?: number) =>
+  invoke<MediaItem[]>("get_high_energy_tracks", { limit });
+export const getFavorites = (limit?: number) =>
+  invoke<MediaItem[]>("get_favorites", { limit });
+export const getFavoriteIds = () => invoke<string[]>("get_favorite_ids");
+export const toggleFavorite = (mediaId: string) =>
+  invoke<boolean>("toggle_favorite", { mediaId });
+
 // Artwork URL helper
 export const artworkUrl = (hash: string) =>
   `http://127.0.0.1:9876/artwork/${hash}`;

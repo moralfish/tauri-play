@@ -21,6 +21,81 @@ what changed.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-11
+
+### Added
+- **Home screen** is now the app's default landing view. It stitches
+  together a "Now Playing / Resume" hero card, a Recently Played scroller,
+  Quick Actions (Shuffle, Play All, Open Queue, Recently Added), a
+  "Library Highlights — Back in Rotation" row, Most Played, Recently
+  Added, Favorites, and a two-up "Smart Suggestions" card band for Late
+  Night Tracks and High Energy Session. Every section refreshes from one
+  `Promise.all` fan-out and subscribes to `library-updated` /
+  `media-cached` / `favorites-updated` so new plays, new files, and heart
+  toggles land live without a second round-trip.
+- **Play history, play counters, and favorites** are persistent. Schema
+  migration **v4** adds a `play_history` table (indexed by `played_at`
+  and `media_id`), a `favorites` table, and a `play_count` column on
+  `media_items`. The `play()` command writes a `play_history` row and
+  bumps the counter in a single transaction, best-effort, so playback
+  never blocks on a bookkeeping failure.
+- **Smart Suggestions run on simple heuristics.** "Late Night Tracks"
+  selects rows whose `play_history.played_at` falls between 22:00 and
+  05:00 local time, ordered by night-play frequency. "High Energy
+  Session" filters on `genre` (house / techno / trance / dnb /
+  electronic / rock / punk / metal) and shuffles.
+- **Favorites with a working heart.** Clicking the heart in the transport
+  bar toggles `favorites(media_id)` via the new `toggle_favorite` command,
+  emits a `favorites-updated` event so Home refreshes, and updates the
+  in-memory `favoriteIds: Set<string>` on the home store optimistically
+  for instant visual feedback.
+- **Library grid view.** The Library now has a list / grid toggle next
+  to the source filter. Grid mode renders the same items as
+  180-px stacked album cards, reusing the `AlbumCard` primitive that
+  Home uses, wrapped in a width-aware virtualized grid that bounds the
+  DOM to the visible row slice (essential at 9k+ tracks). The mode is
+  persisted via `saveAppState("library_view_mode")`. Click-to-select,
+  shift/cmd multi-select, right-click context menu, and
+  drag-to-playlist all continue to work across both modes.
+- **Design token system.** `--radius-panel` (20px), `--radius-card`
+  (14px), `--radius-control` (10px), `--radius-chip` (999px),
+  `--space-section` (32px), and `--space-gutter` (20px) are now the
+  single source of truth for rounding and rhythm across every surface.
+- **9 new Tauri commands** (`get_recently_played`, `get_most_played`,
+  `get_recently_added`, `get_back_in_rotation`, `get_late_night_tracks`,
+  `get_high_energy_tracks`, `get_favorites`, `get_favorite_ids`,
+  `toggle_favorite`) with matching TypeScript bindings in
+  `src/api/commands.ts`.
+
+### Changed
+- **Transport bar rebalanced into a true three-zone grid**
+  (`minmax(240,280) / 1fr / minmax(240,320)`). The play-pause button is
+  now the accent-colored hero control at 48 px, prev/next/shuffle/repeat
+  round up to 36 px, and the old double-row waveform bar has been
+  replaced with a thin 3-px progress strip pinned to the bottom edge of
+  the player frame. Hovering the strip shows a lightweight time tooltip;
+  clicking anywhere seeks.
+- **Right Now-Playing panel simplified.** The verbose two-column
+  "Details" metadata grid has been removed (it's moved to a forthcoming
+  more-modal, reachable via a stub button in the panel header). The
+  compact panel now carries a large artwork card + title/artist + inline
+  prev/play/next row, plus a "Next Up" strip of small 64-px queue tiles
+  that jump to their queue index on click.
+- **Layout radii migrated to tokens.** `Layout.tsx`'s three zones and
+  the floating player dock read `--radius-panel` instead of hard-coded
+  `rounded-[20px]`. Theming a radius once now visually rotates the
+  whole shell.
+- `MediaItem` on both the Rust side (`src-tauri/src/models/media_item.rs`)
+  and the TypeScript side (`src/types/index.ts`) gained three new
+  derived fields — `play_count`, `last_played_at`, `is_favorite` — that
+  are computed in SQL via `LEFT JOIN`s on `play_history` and `favorites`.
+
+### Database
+- **Migration v4**: adds `play_history`, `favorites`, `play_count`, and
+  the two supporting indexes on `play_history`. Guarded by the same
+  `pragma_table_info` existence check that `migrate_v3` uses, so
+  repeated runs are idempotent.
+
 ## [0.2.3] - 2026-04-11
 
 ### Added

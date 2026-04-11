@@ -36,7 +36,10 @@ import {
 import { open } from "@tauri-apps/plugin-dialog";
 import { useContextMenu, type MenuItem } from "./ContextMenu";
 import { useConfirm } from "./ConfirmDialog";
+import LibraryGrid from "./LibraryGrid";
 import type { MediaItem } from "../types";
+
+type LibraryViewMode = "list" | "grid";
 
 type PlayState = "idle" | "playing" | "paused";
 
@@ -482,6 +485,22 @@ export default function Library() {
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [sourceFilter, setSourceFilter] = useState<"all" | "local" | "cloud">("all");
+  // Library view mode — persisted via saveAppState so the user's last
+  // choice sticks across restarts. Default is the classic table list.
+  const [viewMode, setViewMode] = useState<LibraryViewMode>("list");
+
+  useEffect(() => {
+    getAppState("library_view_mode")
+      .then((saved) => {
+        if (saved === "grid" || saved === "list") setViewMode(saved);
+      })
+      .catch(() => {});
+  }, []);
+
+  const changeViewMode = useCallback((next: LibraryViewMode) => {
+    setViewMode(next);
+    saveAppState("library_view_mode", next).catch(() => {});
+  }, []);
 
   // Load saved column config
   useEffect(() => {
@@ -851,21 +870,32 @@ export default function Library() {
     if (selectedIds.size > 0) clearSelection();
   };
 
-  // -----------------------------------------------------------------
-  // Inline virtualization — render only the rows that are actually
-  // inside the scroll viewport. We target a constant row height so the
-  // math is trivial and the scroll offset always matches the content.
-  // -----------------------------------------------------------------
-  const ROW_HEIGHT = 56; // px; matches px-4 py-3 + 32px artwork + 2px border-spacing
+  const ROW_HEIGHT = 58;
   const OVERSCAN = 6;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
 
+  // NOTE: depending on `viewMode` is critical. When the user flips
+  // grid → list, the old `<div ref={scrollRef}>` is unmounted and a
+  // fresh DOM element is mounted for the list view. React reassigns
+  // `scrollRef.current` automatically, but the ResizeObserver we set
+  // up the first time is still bound to the *old* (now-detached)
+  // element, so `viewportHeight` would freeze at its grid-mode value
+  // and the virtualizer would render a short slice, leaving the
+  // classic empty band at the bottom of the list. Re-running this
+  // effect on view switches tears down the old observer and binds a
+  // fresh one to the live scroll container.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     setViewportHeight(el.clientHeight);
+    // Scroll position from a previous mount of this container
+    // no longer means anything in the new view — reset both the
+    // DOM scroll and the React mirror so virtualizer math starts
+    // from the top.
+    el.scrollTop = 0;
+    setScrollTop(0);
 
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -874,7 +904,7 @@ export default function Library() {
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [viewMode]);
 
   // rAF-throttled scroll handler — a raw scroll handler on a 10k-row list
   // can fire 100+ events per second and cause jank.
@@ -959,6 +989,45 @@ export default function Library() {
               </span>
             </div>
           )}
+        </div>
+
+        {/* View mode toggle (List / Grid) */}
+        <div
+          className="flex items-center gap-0.5 p-0.5 flex-shrink-0"
+          style={{
+            background: 'var(--bg-input)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-control)',
+          }}
+        >
+          <button
+            onClick={() => changeViewMode("list")}
+            className="h-8 w-9 flex items-center justify-center transition-colors duration-150"
+            style={{
+              background: viewMode === "list" ? 'var(--accent)' : 'transparent',
+              color: viewMode === "list" ? 'var(--accent-on-accent)' : 'var(--text-secondary)',
+              borderRadius: 'var(--radius-control)',
+            }}
+            title="List view"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <button
+            onClick={() => changeViewMode("grid")}
+            className="h-8 w-9 flex items-center justify-center transition-colors duration-150"
+            style={{
+              background: viewMode === "grid" ? 'var(--accent)' : 'transparent',
+              color: viewMode === "grid" ? 'var(--accent-on-accent)' : 'var(--text-secondary)',
+              borderRadius: 'var(--radius-control)',
+            }}
+            title="Grid view"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h6v6H4zM14 5h6v6h-6zM4 13h6v6H4zM14 13h6v6h-6z" />
+            </svg>
+          </button>
         </div>
 
         {/* Source filter (All / Local / Cloud) */}
@@ -1105,12 +1174,26 @@ export default function Library() {
         </div>
       </div>
 
-      {/* Media list */}
+      {/* Media content — either the virtualized list or the virtualized grid */}
+      {viewMode === "grid" && items.length > 0 ? (
+        <LibraryGrid
+          items={sortedItems}
+          selectedIds={selectedIds}
+          onRowClick={handleRowClick}
+          onRowContextMenu={handleRowContextMenu}
+          onPlay={(_it, index) => setQueue(sortedItems, index)}
+        />
+      ) : (
+      // `min-h-0` is the critical piece here — without it, a `flex-1`
+      // scroll container inside a `flex flex-col h-full` parent will
+      // refuse to shrink below its content height, leaving the last few
+      // rows cut off (or producing a tall empty band at the bottom when
+      // the library has a small number of rows).
       <div
         ref={scrollRef}
         onScroll={handleScroll}
         onClick={handleListBackgroundClick}
-        className="flex-1 overflow-auto"
+        className="flex-1 min-h-0 overflow-auto"
       >
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
@@ -1125,8 +1208,19 @@ export default function Library() {
             </div>
           </div>
         ) : (
+          // Rows keep their 2px vertical gap via `border-spacing` so the
+          // rounded "pill" row look stays intact. Flicker is killed
+          // further down by giving each sticky `<th>` its own opaque
+          // background + `z-index: 2`, so rows scrolling underneath
+          // never leak through the header during scroll.
           <table className="w-full text-sm" style={{ borderSpacing: '0 2px', borderCollapse: 'separate' }}>
-            <thead className="sticky top-0 text-left" style={{ background: 'var(--bg-surface)' }}>
+            <thead
+              className="sticky top-0 text-left"
+              style={{
+                background: 'var(--bg-surface)',
+                zIndex: 2,
+              }}
+            >
               <tr>
                 {visibleColumns.map((col) => (
                   <th
@@ -1136,7 +1230,13 @@ export default function Library() {
                         ? "cursor-pointer select-none"
                         : ""
                     }`}
-                    style={{ color: 'var(--text-muted)' }}
+                    style={{
+                      color: 'var(--text-muted)',
+                      background: 'var(--bg-surface)',
+                      // Thin bottom divider so the header has a clear
+                      // edge even when a row scrolls up against it.
+                      boxShadow: 'inset 0 -1px 0 var(--border)',
+                    }}
                     onClick={() => {
                       if (col.id === "artwork") return;
                       if (sortCol === col.id) {
@@ -1203,6 +1303,7 @@ export default function Library() {
           </table>
         )}
       </div>
+      )}
     </div>
   );
 }

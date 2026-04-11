@@ -21,6 +21,12 @@ export interface MediaItem {
   file_size: number | null;
   last_modified: number | null;
   gdrive_parent_folder_id?: string | null;
+  // `play_count` is stored on the row; `last_played_at` is a LEFT JOIN'd
+  // MAX(played_at) from `play_history`; `is_favorite` is a LEFT JOIN'd
+  // existence check against the `favorites` table.
+  play_count?: number;
+  last_played_at?: number | null;
+  is_favorite?: boolean;
 }
 
 export interface Playlist {

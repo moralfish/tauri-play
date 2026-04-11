@@ -66,12 +66,13 @@ export default function Layout({ sidebar, content, player, rightPanel }: LayoutP
           <div className="flex flex-1 min-h-0 p-2 gap-2">
             {/* Left Sidebar — collapsible */}
             <aside
-              className="flex-shrink-0 flex flex-col rounded-[20px] overflow-hidden"
+              className="flex-shrink-0 flex flex-col overflow-hidden"
               style={{
                 width: leftCollapsed ? 60 : 270,
                 transition: 'width 0.2s ease',
                 background: 'var(--bg-sidebar)',
                 border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-panel)',
               }}
             >
               {sidebar}
@@ -79,8 +80,12 @@ export default function Layout({ sidebar, content, player, rightPanel }: LayoutP
 
             {/* Content */}
             <main
-              className="flex-1 min-w-0 rounded-[20px] overflow-hidden flex flex-col"
-              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+              className="flex-1 min-w-0 overflow-hidden flex flex-col"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-panel)',
+              }}
             >
               {content}
             </main>
@@ -88,12 +93,13 @@ export default function Layout({ sidebar, content, player, rightPanel }: LayoutP
             {/* Right panel — collapsible */}
             {rightPanelVisible && (
               <aside
-                className="flex-shrink-0 rounded-[20px] overflow-hidden flex flex-col"
+                className="flex-shrink-0 overflow-hidden flex flex-col"
                 style={{
                   width: rightCollapsed ? 60 : 340,
                   transition: 'width 0.2s ease',
                   background: 'var(--bg-sidebar)',
                   border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-panel)',
                   boxShadow: '0 10px 30px var(--shadow-panel)',
                 }}
               >
@@ -105,10 +111,11 @@ export default function Layout({ sidebar, content, player, rightPanel }: LayoutP
           {/* Floating player dock */}
           <div className="px-2 pb-2">
             <footer
-              className="rounded-[20px] overflow-hidden"
+              className="overflow-hidden"
               style={{
                 background: 'var(--bg-elevated)',
                 border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-panel)',
                 boxShadow: '0 -4px 30px var(--shadow-player)',
               }}
             >
@@ -120,10 +127,11 @@ export default function Layout({ sidebar, content, player, rightPanel }: LayoutP
         <DragOverlay>
           {draggedItemName ? (
             <div
-              className="text-sm px-3 py-1.5 rounded-xl shadow-lg"
+              className="text-sm px-3 py-1.5 shadow-lg"
               style={{
                 background: 'var(--bg-elevated)',
                 border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-control)',
                 color: 'var(--text-primary)',
               }}
             >

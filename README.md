@@ -11,6 +11,9 @@
 
 ## Features
 
+- **Home dashboard** -- A context-aware landing screen with a Resume card, horizontal scrollers for Recently Played / Most Played / Recently Added / Favorites, a "Back in Rotation" highlight row that surfaces forgotten tracks, Quick Actions (Shuffle, Play All, Open Queue), and Smart Suggestions (Late Night Tracks, High Energy Session) derived from simple time-of-day and genre heuristics
+- **Library grid view** -- Toggle between the classic virtualized table list and a virtualized card grid that reuses the Home screen's album-card primitive; selection, multi-select, context menu, and drag-to-playlist all work across both modes
+- **Play history & Favorites** -- Every play is recorded in a dedicated `play_history` table (schema v4) with per-track `play_count`; the transport-bar heart toggles a persistent `favorites` set that feeds the Home Favorites row
 - **Local media playback** -- MP3, FLAC, WAV, OGG, AAC, M4A, WMA, MP4, MKV, AVI, WebM, MOV
 - **Google Drive streaming** -- Browse and play audio/video from your Drive with OAuth 2.0
 - **Waveform visualization** -- Real-time canvas waveform with click-to-seek
