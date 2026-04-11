@@ -21,6 +21,38 @@ what changed.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-11
+
+### Fixed
+- **Multi-minute main-thread hang during background sync.** macOS hang
+  reports at v0.1.0 / v0.2.0 showed `tauri_media_player_lib::commands::library::save_app_state`
+  blocked for 219+ seconds inside `pthread_mutex_lock`, while a
+  `tokio-rt-worker` thread held `state.db` for the entire duration of a
+  Google Drive walk inside `services::sync::sync_all → services::library::scan_all → GDriveProvider::scan_streaming`.
+  The frontend hung whenever it tried to call any DB-touching IPC command
+  (e.g. `save_app_state` for column-config persistence) while the
+  background sync was scanning Drive. Fixed by refactoring
+  `services::library::scan_all` to take `&Arc<Mutex<Connection>>` and
+  acquire the mutex **per upsert** via `provider.scan_streaming`, instead
+  of pre-locking and passing in a `&Connection`. This matches what the
+  user-initiated `commands::library::run_scan` path has always done.
+  `services::sync::sync_all` no longer locks `state.db` itself before
+  calling `scan_all`.
+
+### Removed
+- **`MediaProvider::scan() -> Vec<MediaItem>` convenience wrapper**, the
+  non-streaming form that buffered an entire provider walk into memory and
+  was the only API that allowed the caller to hold a long-lived DB lock
+  across the scan. The trait now exposes `scan_streaming` only. The doc
+  comment on `scan_streaming` explicitly calls out the prior hang as the
+  reason this helper was removed, to discourage future re-introduction.
+
+### Changed
+- `services::library::scan_all` now logs and skips individual upsert
+  errors instead of aborting the entire sync, and uses `log::warn!` /
+  `log::error!` for failure reporting consistent with the rest of the
+  background services.
+
 ## [0.2.0] - 2026-04-11
 
 ### Added
@@ -95,6 +127,7 @@ what changed.
 - Local Axum streaming server on `127.0.0.1:9876` for HTTP Range requests
   and Drive proxy streaming.
 
-[Unreleased]: https://example.invalid/compare/v0.2.0...HEAD
+[Unreleased]: https://example.invalid/compare/v0.2.1...HEAD
+[0.2.1]: https://example.invalid/compare/v0.2.0...v0.2.1
 [0.2.0]: https://example.invalid/compare/v0.1.0...v0.2.0
 [0.1.0]: https://example.invalid/releases/tag/v0.1.0

@@ -88,12 +88,14 @@ fn sync_all(state: &AppState) -> anyhow::Result<()> {
         shared.clear();
     }
 
-    // Phase 4: run the scan. `scan_all` itself acquires the DB mutex only
-    // for individual operations, which is fine for streaming upserts.
-    {
-        let conn = state.db.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
-        crate::services::library::scan_all(&providers, &conn)?;
-    }
+    // Phase 4: run the scan. We deliberately do **not** hold `state.db` here
+    // — `scan_all` re-acquires the mutex per upsert internally. Holding it
+    // across the whole call used to wedge the main thread for the entire
+    // duration of a Google Drive walk (network-bound, can be many minutes),
+    // because frontend IPC commands like `save_app_state` would block on the
+    // same mutex. See the macOS hang report at v0.1.0 for the smoking-gun
+    // stack trace.
+    crate::services::library::scan_all(&providers, &state.db)?;
 
     Ok(())
 }
