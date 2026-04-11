@@ -3,6 +3,7 @@ use crate::models::MediaItem;
 use crate::providers::gdrive::{oauth::OAuthManager, GDriveProvider};
 use crate::providers::local::{self, LocalProvider};
 use crate::providers::traits::MediaProvider;
+use crate::services::gdrive_cache;
 use crate::services::library::ScanResult;
 use crate::services::metadata::{self, WriteMetadata};
 use crate::state::AppState;
@@ -60,6 +61,16 @@ pub async fn scan_library(app: AppHandle) -> Result<(), String> {
             Ok(scan_result) => {
                 let _ = app_clone.emit("scan-completed", &scan_result);
                 let _ = app_clone.emit("library-updated", ());
+
+                // Kick off the gdrive metadata hydration pass right away.
+                // Without this, freshly-scanned cloud tracks would show up
+                // in the library with their bare filename only and stay
+                // that way until either the user played each one or the
+                // 5-minute periodic background sync caught up. The pass
+                // is idempotent and uses an in-flight dedup set, so it's
+                // safe to run alongside the periodic sync.
+                let state: State<'_, AppState> = app_clone.state();
+                gdrive_cache::sync_gdrive_metadata((*state).clone());
             }
             Err(err) => {
                 let _ = app_clone.emit("scan-error", err.to_string());
@@ -154,10 +165,18 @@ fn run_scan(app: &AppHandle) -> Result<ScanResult, String> {
         let label_for_status = label.to_string();
         let last_item_emit = Mutex::new(Instant::now() - Duration::from_secs(1));
         let last_status_emit = Mutex::new(Instant::now() - Duration::from_secs(1));
+        // Independent throttle for `library-updated`. We want the library
+        // view to refresh while a long Drive scan is still in flight, but
+        // not on every single upsert (a 10k-file scan would re-fetch the
+        // whole library 10k times). One refetch every ~750 ms or every
+        // 50 imported items strikes the balance.
+        let last_lib_emit = Mutex::new(Instant::now() - Duration::from_secs(1));
 
         const ITEM_EMIT_INTERVAL: Duration = Duration::from_millis(200);
         const ITEM_EMIT_EVERY_N: usize = 100;
         const STATUS_EMIT_INTERVAL: Duration = Duration::from_millis(250);
+        const LIB_EMIT_INTERVAL: Duration = Duration::from_millis(750);
+        const LIB_EMIT_EVERY_N: usize = 50;
 
         let scan_result = provider.scan_streaming(
             &|item: MediaItem| {
@@ -168,6 +187,27 @@ fn run_scan(app: &AppHandle) -> Result<ScanResult, String> {
                     }
                 }
                 let n = imported.fetch_add(1, Ordering::SeqCst) + 1;
+
+                // Tell the frontend the library has new rows so it can
+                // refetch incrementally instead of waiting for the entire
+                // scan to finish. The frontend store debounces these at
+                // 250 ms, so even a burst of 50 events still produces a
+                // single getMediaItems() round-trip.
+                let should_emit_lib = {
+                    let mut last = last_lib_emit.lock().unwrap();
+                    let now = Instant::now();
+                    if n % LIB_EMIT_EVERY_N == 0
+                        || now.duration_since(*last) >= LIB_EMIT_INTERVAL
+                    {
+                        *last = now;
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if should_emit_lib {
+                    let _ = app_for_item.emit("library-updated", ());
+                }
 
                 // Throttle: emit only if enough time or items have elapsed.
                 let should_emit = {

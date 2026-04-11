@@ -191,6 +191,13 @@ pub fn sync_gdrive_metadata(state: AppState) {
     });
 }
 
+/// How many gdrive files we hydrate in parallel. Drive happily serves ~8
+/// simultaneous downloads per user but starts returning 403 rateLimitExceeded
+/// beyond that, so we stay conservatively below the ceiling. 4 is enough to
+/// saturate a residential connection on FLAC payloads while leaving headroom
+/// for the user's interactive playback requests to cut in.
+const METADATA_SYNC_CONCURRENCY: usize = 4;
+
 async fn sync_gdrive_metadata_inner(state: &AppState) -> anyhow::Result<()> {
     let items = {
         let conn = state.db.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -209,56 +216,101 @@ async fn sync_gdrive_metadata_inner(state: &AppState) -> anyhow::Result<()> {
     };
 
     // A single reusable client — reqwest pools connections internally so this
-    // reuses keep-alive sockets across the loop.
+    // reuses keep-alive sockets across concurrent workers.
     let client = reqwest::Client::new();
     let tmp_dir = state.app_data_dir.join("gdrive_meta_tmp");
     let _ = tokio::fs::create_dir_all(&tmp_dir).await;
 
     let total = items.len();
-    log::info!("[gdrive_cache] hydrating metadata for {} gdrive track(s)", total);
+    log::info!(
+        "[gdrive_cache] hydrating metadata for {} gdrive track(s) with concurrency={}",
+        total,
+        METADATA_SYNC_CONCURRENCY
+    );
 
-    for (idx, item) in items.into_iter().enumerate() {
+    // Announce a sync pass start so the frontend can show a non-modal
+    // "hydrating metadata…" indicator.
+    if let Some(handle) = &state.app_handle {
+        let _ = handle.emit(
+            "metadata-sync-progress",
+            serde_json::json!({ "done": 0u32, "total": total as u32 }),
+        );
+    }
+
+    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(METADATA_SYNC_CONCURRENCY));
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut join_set: tokio::task::JoinSet<()> = tokio::task::JoinSet::new();
+
+    for item in items.into_iter() {
         // Skip items that the playback path is already handling — no point
         // racing the same download twice.
         if !mark_started(&item.id) {
             continue;
         }
-        let result = hydrate_one_metadata(
-            state,
-            &client,
-            &token,
-            &tmp_dir,
-            &item,
-        )
-        .await;
-        mark_finished(&item.id);
 
-        if let Err(e) = result {
-            log::warn!(
-                "[gdrive_cache] metadata sync: {} ({}): {}",
-                item.name,
-                item.id,
-                e
-            );
-            continue;
-        }
+        let permit = sem
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|e| anyhow::anyhow!("semaphore closed: {}", e))?;
+        let state_c = state.clone();
+        let client_c = client.clone();
+        let token_c = token.clone();
+        let tmp_c = tmp_dir.clone();
+        let done_c = done.clone();
 
-        // Nudge the UI periodically so long syncs show incremental progress
-        // rather than landing as one giant refresh at the end.
-        if let Some(handle) = &state.app_handle {
-            let _ = handle.emit("media-cached", &item.id);
-            if (idx + 1) % 10 == 0 || idx + 1 == total {
-                let _ = handle.emit("library-updated", ());
+        join_set.spawn(async move {
+            let _permit = permit; // released when task ends
+            let item_id = item.id.clone();
+            let result =
+                hydrate_one_metadata(&state_c, &client_c, &token_c, &tmp_c, &item).await;
+            mark_finished(&item_id);
+
+            if let Err(e) = result {
+                log::warn!(
+                    "[gdrive_cache] metadata sync: {} ({}): {}",
+                    item.name,
+                    item_id,
+                    e
+                );
+                return;
             }
+
+            let n = done_c.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            if let Some(handle) = &state_c.app_handle {
+                let _ = handle.emit("media-cached", &item_id);
+                // Push a progress tick and a library refresh every 10 items
+                // (or at the very end) so the UI sees incremental updates
+                // instead of one big refresh when the whole sync finishes.
+                if n % 10 == 0 || n == total {
+                    let _ = handle.emit("library-updated", ());
+                    let _ = handle.emit(
+                        "metadata-sync-progress",
+                        serde_json::json!({ "done": n as u32, "total": total as u32 }),
+                    );
+                }
+            }
+        });
+    }
+
+    // Drain all workers.
+    while let Some(res) = join_set.join_next().await {
+        if let Err(e) = res {
+            log::warn!("[gdrive_cache] worker join error: {}", e);
         }
     }
 
     // Clean up temp directory if it's empty.
     let _ = tokio::fs::remove_dir(&tmp_dir).await;
 
-    // Final refresh so any remainder after the last 10-item tick is flushed.
+    // Final refresh + progress sentinel so any remainder after the last
+    // 10-item tick is flushed and the UI can hide its indicator.
     if let Some(handle) = &state.app_handle {
         let _ = handle.emit("library-updated", ());
+        let _ = handle.emit(
+            "metadata-sync-progress",
+            serde_json::json!({ "done": total as u32, "total": total as u32, "finished": true }),
+        );
     }
 
     Ok(())
@@ -271,12 +323,26 @@ async fn hydrate_one_metadata(
     tmp_dir: &std::path::Path,
     item: &crate::models::MediaItem,
 ) -> anyhow::Result<()> {
-    let ext_hint = mime_to_ext(&item.mime_type).unwrap_or("bin");
-    let tmp_path = tmp_dir.join(format!("{}.{}", item.id, ext_hint));
+    // Fast path: if the user already played this track, the file is sitting
+    // in the LRU cache — reuse it instead of paying for another full Drive
+    // download. This also keeps bandwidth usage sane for big libraries where
+    // a handful of tracks have been played but the rest are cold.
+    let cached_path = {
+        if let Ok(conn) = state.db.lock() {
+            state.cache_manager.get_cached_path(&conn, &item.id)
+        } else {
+            None
+        }
+    };
 
-    // Download the file to the temp path. We do a streaming write so very
-    // large files don't have to be buffered in memory all at once.
-    {
+    let (read_path, tmp_path) = if let Some(p) = cached_path.filter(|p| p.exists()) {
+        (p, None)
+    } else {
+        let ext_hint = mime_to_ext(&item.mime_type).unwrap_or("bin");
+        let tmp_path = tmp_dir.join(format!("{}.{}", item.id, ext_hint));
+
+        // Download the file to the temp path. We do a streaming write so very
+        // large files don't have to be buffered in memory all at once.
         let url = gdrive_api::download_url(&item.external_id);
         let resp = client.get(&url).bearer_auth(token).send().await?;
         if !resp.status().is_success() {
@@ -284,15 +350,18 @@ async fn hydrate_one_metadata(
         }
         let bytes = resp.bytes().await?;
         tokio::fs::write(&tmp_path, &bytes).await?;
-    }
+        (tmp_path.clone(), Some(tmp_path))
+    };
 
-    let meta_path = tmp_path.clone();
+    let meta_path = read_path.clone();
     let meta_result = tokio::task::spawn_blocking(move || metadata::read_metadata(&meta_path))
         .await
         .map_err(|e| anyhow::anyhow!("metadata task join failed: {}", e))?;
 
-    // Always remove the temp file — we never register it in the cache.
-    let _ = tokio::fs::remove_file(&tmp_path).await;
+    // Only remove the temp file if we created one — never touch the cache path.
+    if let Some(tmp) = tmp_path {
+        let _ = tokio::fs::remove_file(&tmp).await;
+    }
 
     let meta = meta_result.map_err(|e| anyhow::anyhow!("read_metadata: {}", e))?;
 

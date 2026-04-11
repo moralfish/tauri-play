@@ -6,6 +6,14 @@ import { usePlaybackStore } from "./playbackStore";
 
 const RECENT_FILES_LIMIT = 8;
 
+interface MetadataSyncProgress {
+  done: number;
+  total: number;
+  finished?: boolean;
+}
+
+export type { MetadataSyncProgress };
+
 interface LibraryState {
   items: MediaItem[];
   isLoading: boolean;
@@ -15,6 +23,7 @@ interface LibraryState {
   scanModalDismissed: boolean;
   scanError: string | null;
   lastScan: ScanResult | null;
+  metadataSync: MetadataSyncProgress | null;
   scan: () => Promise<void>;
   refresh: () => Promise<void>;
   initEventListeners: () => void;
@@ -37,7 +46,43 @@ const scheduleLibraryRefetch = (set: (s: Partial<LibraryState>) => void) => {
     refetchTimer = null;
     api
       .getMediaItems()
-      .then((items) => set({ items, isLoading: false }))
+      .then((items) => {
+        set({ items, isLoading: false });
+        // Reconcile the playback store against the fresh library snapshot.
+        // `playItem` takes a one-time copy of the MediaItem at play time, so
+        // when a Drive track's metadata finishes hydrating *after* it was
+        // already playing, the Now Playing sidebar and bottom bar keep
+        // showing the filename-only stub unless we patch the live refs.
+        // We also refresh the queue entries so next/prev buttons don't
+        // revert to the stale copies.
+        const playback = usePlaybackStore.getState();
+        const byId = new Map(items.map((it) => [it.id, it]));
+        const patch: Partial<{
+          currentItem: MediaItem;
+          queue: MediaItem[];
+        }> = {};
+        if (playback.currentItem) {
+          const fresh = byId.get(playback.currentItem.id);
+          if (fresh && fresh !== playback.currentItem) {
+            patch.currentItem = fresh;
+          }
+        }
+        if (playback.queue.length > 0) {
+          let changed = false;
+          const newQueue = playback.queue.map((q) => {
+            const fresh = byId.get(q.id);
+            if (fresh && fresh !== q) {
+              changed = true;
+              return fresh;
+            }
+            return q;
+          });
+          if (changed) patch.queue = newQueue;
+        }
+        if (patch.currentItem || patch.queue) {
+          usePlaybackStore.setState(patch);
+        }
+      })
       .catch(console.error);
   }, 250);
 };
@@ -51,6 +96,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   scanModalDismissed: false,
   scanError: null,
   lastScan: null,
+  metadataSync: null,
 
   scan: async () => {
     if (get().isScanning) return;
@@ -137,6 +183,24 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         scanRecentFiles: [],
         scanError: e.payload,
       });
+    });
+
+    // Post-scan metadata hydration progress. Shown as a small non-modal
+    // indicator in the Library header so the user can see how far along the
+    // background pass is; a large Drive library can easily be thousands of
+    // files and we don't want to block the UI behind a scan modal for that.
+    listen<MetadataSyncProgress>("metadata-sync-progress", (e) => {
+      const payload = e.payload;
+      if (payload.finished || payload.done >= payload.total) {
+        // Linger briefly so the user sees the "done" state, then clear.
+        set({ metadataSync: { ...payload, finished: true } });
+        setTimeout(() => {
+          const cur = get().metadataSync;
+          if (cur && cur.finished) set({ metadataSync: null });
+        }, 2500);
+      } else {
+        set({ metadataSync: payload });
+      }
     });
 
     // A cloud track just finished hydrating into the local cache —

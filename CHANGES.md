@@ -21,6 +21,81 @@ what changed.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-04-11
+
+### Added
+- **Warm orange accent (`#D4842A`)** replaces the previous blue across
+  both dark and light themes, along with matching `--accent-soft`,
+  `--bg-active`, and waveform tints so the whole UI (selection rings,
+  active tab, progress bar, volume slider, playing indicator) carries a
+  single cohesive accent.
+- **Non-modal metadata-sync indicator** in the Library header. While
+  Google Drive metadata hydration is running after a scan, a small
+  pulsing dot and `"Syncing metadata 234/9651"` counter sit under the
+  "Library" title so the user has a live signal that background work is
+  still in flight (and that the bare-filename rows are not a broken
+  final state).
+
+### Changed
+- **Post-scan Google Drive metadata hydration is now parallelized.**
+  `gdrive_cache::sync_gdrive_metadata_inner` was a plain sequential
+  loop: for a 9k+ track library it would download one file at a time to
+  a temp path, extract tags, delete, and repeat -- easily hours of wall
+  time before the library showed real titles and artwork. It now uses
+  `tokio::task::JoinSet` gated by a `Semaphore` with
+  `METADATA_SYNC_CONCURRENCY = 4` so up to four workers download and
+  extract in parallel, and emits a new `metadata-sync-progress` event
+  with `{done, total, finished}` shape that the frontend consumes.
+- **`hydrate_one_metadata` now reuses the LRU file cache** when a track
+  has already been played (and therefore already lives on disk), so the
+  metadata pass doesn't re-download bytes the user already paid for.
+
+### Fixed
+- **Now Playing sidebar and bottom player kept showing the stale
+  filename-only stub after a Drive track's metadata finished
+  hydrating.** `playbackStore.playItem` takes a one-time copy of the
+  `MediaItem` at play time. When a background pass later updated that
+  row in the database, the library list refreshed but the playback
+  store's `currentItem` (and the items inside its `queue`) still
+  pointed at the pre-hydration snapshot, so the sidebar art, title, and
+  artist never updated until the user clicked play again. The debounced
+  refetch inside `libraryStore.scheduleLibraryRefetch` now reconciles
+  `playbackStore.currentItem` and `playbackStore.queue` against the
+  fresh snapshot by id, so newly-synced metadata lands in the Now
+  Playing panel and player bar immediately.
+
+## [0.2.2] - 2026-04-11
+
+### Fixed
+- **Scan progress modal truncated filenames mid-character with no
+  ellipsis.** The recent-files log inside `ScanProgressModal.tsx` is a
+  `flex flex-col-reverse` container, and its children carried only the
+  Tailwind `truncate` utility. Flex items default to `min-width: auto`,
+  which let long filenames push each row wider than the parent; the
+  parent's `overflow-hidden` then clipped the text mid-character without
+  ever rendering the ellipsis. Added `min-w-0 w-full` to each row so
+  `truncate` actually works inside the flex column.
+- **Library view did not reflect freshly-discovered tracks during a
+  Google Drive scan -- the user had to wait for the scan to complete or
+  restart the app.** `commands::library::run_scan` was streaming upserts
+  into the database via `db.lock()` per item, but never emitted any
+  `library-updated` events until `scan-completed` fired at the very end.
+  The on-item callback now throttle-emits `library-updated` (at most one
+  per 750 ms or every 50 imported items) so the frontend's debounced
+  refetch can pick up the new rows incrementally while the scan is still
+  in progress.
+- **Google Drive metadata and artwork were not synced after a
+  user-initiated scan; tracks had to be played individually before their
+  real titles, artists, and album art appeared.** The 5-minute periodic
+  background sync was the only path that triggered
+  `gdrive_cache::sync_gdrive_metadata`, so a user who clicked "Scan"
+  would see bare filenames until either they played each track (which
+  hydrated metadata one at a time via `ensure_cached_in_background`) or
+  the next 5-minute sync tick caught up. `commands::library::scan_library`
+  now kicks off `sync_gdrive_metadata` immediately after a successful
+  `run_scan`, sharing the existing in-flight dedup set so it's safe to
+  run concurrently with the periodic sync.
+
 ## [0.2.1] - 2026-04-11
 
 ### Fixed
@@ -127,7 +202,9 @@ what changed.
 - Local Axum streaming server on `127.0.0.1:9876` for HTTP Range requests
   and Drive proxy streaming.
 
-[Unreleased]: https://example.invalid/compare/v0.2.1...HEAD
+[Unreleased]: https://example.invalid/compare/v0.2.3...HEAD
+[0.2.3]: https://example.invalid/compare/v0.2.2...v0.2.3
+[0.2.2]: https://example.invalid/compare/v0.2.1...v0.2.2
 [0.2.1]: https://example.invalid/compare/v0.2.0...v0.2.1
 [0.2.0]: https://example.invalid/compare/v0.1.0...v0.2.0
 [0.1.0]: https://example.invalid/releases/tag/v0.1.0

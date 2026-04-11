@@ -168,7 +168,7 @@ export default function ScanProgressModal() {
                 return (
                   <div
                     key={`${file}-${idx}`}
-                    className="truncate px-1"
+                    className="truncate px-1 min-w-0 w-full"
                     style={{
                       color: isNewest
                         ? "var(--text-primary)"

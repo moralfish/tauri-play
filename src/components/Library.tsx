@@ -448,6 +448,7 @@ export default function Library() {
   const isScanning = useLibraryStore((s) => s.isScanning);
   const scan = useLibraryStore((s) => s.scan);
   const refresh = useLibraryStore((s) => s.refresh);
+  const metadataSync = useLibraryStore((s) => s.metadataSync);
   const setQueue = usePlaybackStore((s) => s.setQueue);
   const playNext = usePlaybackStore((s) => s.playNext);
   const addToQueue = usePlaybackStore((s) => s.addToQueue);
@@ -939,6 +940,25 @@ export default function Library() {
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             {sortedItems.length}{sortedItems.length !== items.length ? ` / ${items.length}` : ""} tracks
           </p>
+          {metadataSync && metadataSync.total > 0 && (
+            <div
+              className="mt-1 flex items-center gap-2 text-[10px] tabular-nums"
+              style={{ color: 'var(--accent)' }}
+              title="Fetching titles, artists, and artwork for cloud tracks in the background"
+            >
+              {!metadataSync.finished && (
+                <span
+                  className="w-2 h-2 rounded-full animate-pulse"
+                  style={{ background: 'var(--accent)' }}
+                />
+              )}
+              <span>
+                {metadataSync.finished
+                  ? `Metadata synced (${metadataSync.total})`
+                  : `Syncing metadata ${metadataSync.done}/${metadataSync.total}`}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Source filter (All / Local / Cloud) */}
