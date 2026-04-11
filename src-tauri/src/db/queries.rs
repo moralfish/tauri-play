@@ -1,4 +1,5 @@
 use crate::models::{MediaItem, MediaKind, Playlist};
+use crate::services::metadata::unwrap_mik_key;
 use anyhow::Result;
 use rusqlite::{params, Connection};
 
@@ -83,7 +84,13 @@ fn row_to_media_item(row: &rusqlite::Row) -> rusqlite::Result<MediaItem> {
         last_modified: row.get(17)?,
         gdrive_parent_folder_id: row.get(18)?,
         bpm: row.get::<_, Option<f64>>(19)?.map(|v| v as f32),
-        initial_key: row.get(20)?,
+        // Heal legacy rows that were scanned before the MIK envelope
+        // unwrap landed — otherwise a base64-JSON blob would leak into
+        // the UI as if it were a plain key string.
+        initial_key: row
+            .get::<_, Option<String>>(20)?
+            .map(|s| unwrap_mik_key(&s))
+            .filter(|s| !s.is_empty()),
         energy: row.get::<_, Option<i32>>(21)?.map(|v| v as u32),
         comment: row.get(22)?,
         play_count: row.get::<_, Option<i32>>(23)?.unwrap_or(0) as u32,

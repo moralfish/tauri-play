@@ -96,6 +96,54 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         set_user_version(conn, 5)?;
     }
 
+    if version < 6 {
+        migrate_v6(conn)?;
+        set_user_version(conn, 6)?;
+    }
+
+    Ok(())
+}
+
+/// Heal `media_items.initial_key` rows that were scanned before the
+/// Mixed In Key envelope detection landed. MIK 10+ writes a base64-encoded
+/// JSON blob (`{"algorithm":…,"key":"10A","source":"mixedinkey"}`) into
+/// the TKEY frame instead of the plain key string, so we end up with a
+/// token-looking value leaking into the UI's Key chip. The normalizer in
+/// `metadata::unwrap_mik_key` fixes new scans, and the row mapper heals
+/// reads, but we also overwrite the stored column here so `sqlite3` dumps
+/// / exports stay sane without requiring a full re-scan.
+fn migrate_v6(conn: &Connection) -> Result<()> {
+    // Nothing to do if the column doesn't exist yet (fresh DB that went
+    // straight to v6 via v5 — the rows can't contain anything).
+    let key_col_exists: bool = conn
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('media_items') WHERE name = 'initial_key'",
+        )?
+        .query_row([], |row| row.get::<_, i32>(0))
+        .map(|count| count > 0)?;
+    if !key_col_exists {
+        return Ok(());
+    }
+
+    let mut stmt =
+        conn.prepare("SELECT id, initial_key FROM media_items WHERE initial_key LIKE 'eyJ%'")?;
+    let rows: Vec<(String, String)> = stmt
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    for (id, raw) in rows {
+        let cleaned = crate::services::metadata::unwrap_mik_key(&raw);
+        if cleaned != raw {
+            // If unwrapping produced the empty string for any reason,
+            // store NULL instead so the chip doesn't render a blank.
+            let value: Option<String> = if cleaned.is_empty() { None } else { Some(cleaned) };
+            conn.execute(
+                "UPDATE media_items SET initial_key = ?1 WHERE id = ?2",
+                rusqlite::params![value, id],
+            )?;
+        }
+    }
     Ok(())
 }
 

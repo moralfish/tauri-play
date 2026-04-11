@@ -34,3 +34,4 @@ lofty = "0.22"
 sha2 = "0.10"
 symphonia = { version = "0.5", features = ["all"] }
 open = "5"
+base64 = "0.22"
