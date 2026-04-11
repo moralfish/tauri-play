@@ -27,6 +27,13 @@ export interface MediaItem {
   play_count?: number;
   last_played_at?: number | null;
   is_favorite?: boolean;
+  // DJ-oriented ID3 fields, written by tools like Mixed In Key, Rekordbox
+  // and Serato. All optional — only present on tracks whose tags actually
+  // carry the corresponding frames.
+  bpm?: number | null;
+  initial_key?: string | null;
+  energy?: number | null;
+  comment?: string | null;
 }
 
 export interface Playlist {

@@ -96,6 +96,10 @@ impl LocalProvider {
             item.duration_secs = meta.duration_secs;
             item.year = meta.year;
             item.genre = meta.genre;
+            item.bpm = meta.bpm;
+            item.initial_key = meta.initial_key;
+            item.energy = meta.energy;
+            item.comment = meta.comment;
             if let Some(ref art) = meta.artwork {
                 item.artwork_hash = Some(art.hash.clone());
             }

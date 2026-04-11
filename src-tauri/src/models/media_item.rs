@@ -63,6 +63,24 @@ pub struct MediaItem {
     /// `media_items` row itself, so `upsert_media_item` ignores this field.
     #[serde(default)]
     pub is_favorite: bool,
+    /// Beats-per-minute as tagged by the DJ tool that wrote the file. Read
+    /// from the TBPM ID3 frame; stored as f32 so fractional BPMs ("124.5")
+    /// round-trip cleanly. None when the tag is missing or unparseable.
+    #[serde(default)]
+    pub bpm: Option<f32>,
+    /// Initial musical key in whatever notation the tagging tool wrote —
+    /// Camelot ("8A"), Open Key ("1m"), or standard notation ("F#min").
+    /// We surface it verbatim; rendering normalization is the UI's job.
+    #[serde(default)]
+    pub initial_key: Option<String>,
+    /// Mixed-In-Key style 1-10 energy rating (stored in the ID3v2 TXXX
+    /// "EnergyLevel" frame). Lets DJs filter by vibe.
+    #[serde(default)]
+    pub energy: Option<u32>,
+    /// Free-form comment. DJ tools sometimes stash cue-point annotations
+    /// or custom tags here, so it's worth displaying in the track details.
+    #[serde(default)]
+    pub comment: Option<String>,
 }
 
 impl MediaItem {
@@ -99,6 +117,10 @@ impl MediaItem {
             play_count: 0,
             last_played_at: None,
             is_favorite: false,
+            bpm: None,
+            initial_key: None,
+            energy: None,
+            comment: None,
         }
     }
 }

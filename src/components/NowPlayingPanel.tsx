@@ -277,6 +277,101 @@ export default function NowPlayingPanel() {
             </div>
           </div>
 
+          {/* DJ chip row — only renders if the file's tags actually
+              carry any of the DJ-relevant frames. BPM, key, and
+              energy are the three a DJ scans for first, so they get
+              large pill-style chips at a glance. */}
+          {(currentItem.bpm != null ||
+            currentItem.initial_key ||
+            currentItem.energy != null) && (
+            <div
+              className="flex items-center gap-2 flex-wrap p-3"
+              style={{
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-card)",
+              }}
+            >
+              {currentItem.bpm != null && (
+                <div
+                  className="flex flex-col items-center justify-center px-3 py-1.5 flex-1 min-w-[72px]"
+                  style={{
+                    background: "var(--accent-soft)",
+                    borderRadius: "var(--radius-control)",
+                  }}
+                  title={`${currentItem.bpm} BPM`}
+                >
+                  <span
+                    className="text-[9px] font-semibold uppercase tracking-[0.1em]"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    BPM
+                  </span>
+                  <span
+                    className="text-base font-semibold tabular-nums"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    {Number.isInteger(currentItem.bpm)
+                      ? currentItem.bpm
+                      : currentItem.bpm.toFixed(1)}
+                  </span>
+                </div>
+              )}
+              {currentItem.initial_key && (
+                <div
+                  className="flex flex-col items-center justify-center px-3 py-1.5 flex-1 min-w-[72px]"
+                  style={{
+                    background: "var(--accent-soft)",
+                    borderRadius: "var(--radius-control)",
+                  }}
+                  title={`Key ${currentItem.initial_key}`}
+                >
+                  <span
+                    className="text-[9px] font-semibold uppercase tracking-[0.1em]"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Key
+                  </span>
+                  <span
+                    className="text-base font-semibold"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    {currentItem.initial_key}
+                  </span>
+                </div>
+              )}
+              {currentItem.energy != null && (
+                <div
+                  className="flex flex-col items-center justify-center px-3 py-1.5 flex-1 min-w-[72px]"
+                  style={{
+                    background: "var(--accent-soft)",
+                    borderRadius: "var(--radius-control)",
+                  }}
+                  title={`Energy ${currentItem.energy}/10`}
+                >
+                  <span
+                    className="text-[9px] font-semibold uppercase tracking-[0.1em]"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Energy
+                  </span>
+                  <span
+                    className="text-base font-semibold tabular-nums"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    {currentItem.energy}
+                    <span
+                      className="text-[10px] font-normal"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      /10
+                    </span>
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Details card — two-column metadata grid. Mirrors the
               "DETAILS" section from the v0.2 panel, now scoped to
               the fields that always render cleanly. */}
@@ -387,6 +482,25 @@ export default function NowPlayingPanel() {
                     style={{ color: "var(--text-primary)" }}
                   >
                     {currentItem.play_count}
+                  </dd>
+                </>
+              )}
+              {currentItem.comment && (
+                <>
+                  <dt style={{ color: "var(--text-muted)" }}>Note</dt>
+                  <dd
+                    className="text-right"
+                    style={{
+                      color: "var(--text-primary)",
+                      // Comments can be long — let them wrap rather
+                      // than truncate so the user actually sees the
+                      // cue/DJ note that was tagged.
+                      whiteSpace: "normal",
+                      wordBreak: "break-word",
+                    }}
+                    title={currentItem.comment}
+                  >
+                    {currentItem.comment}
                   </dd>
                 </>
               )}

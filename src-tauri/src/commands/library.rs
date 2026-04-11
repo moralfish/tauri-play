@@ -417,6 +417,10 @@ pub fn write_metadata(
     updated_item.duration_secs = new_meta.duration_secs;
     updated_item.year = new_meta.year;
     updated_item.genre = new_meta.genre;
+    updated_item.bpm = new_meta.bpm;
+    updated_item.initial_key = new_meta.initial_key;
+    updated_item.energy = new_meta.energy;
+    updated_item.comment = new_meta.comment;
     if let Some(ref art) = new_meta.artwork {
         updated_item.artwork_hash = Some(art.hash.clone());
         queries::upsert_artwork(&conn, &art.hash, &art.data, &art.mime_type)

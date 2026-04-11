@@ -4,6 +4,7 @@ import { artworkUrl } from "../../api/commands";
 
 export type CardSize = "sm" | "md" | "lg";
 export type CardLayout = "stacked" | "horizontal";
+export type CardPlayState = "idle" | "playing" | "paused";
 
 interface AlbumCardProps {
   item: MediaItem;
@@ -17,6 +18,63 @@ interface AlbumCardProps {
    *  and keeps the artwork square via aspect-ratio. Used by the
    *  Library grid so cards stretch across the full panel width. */
   stretch?: boolean;
+  /** When this card represents the track currently loaded in the
+   *  playback store, the caller passes "playing" or "paused" so the
+   *  card renders an accent-colored title and a small EQ overlay on
+   *  the artwork. Matches how the list view's index column indicates
+   *  the playing row. */
+  playState?: CardPlayState;
+}
+
+// Miniature 3-bar EQ overlay rendered on top of the artwork of the
+// currently-playing card. Mirrors `PlayingIndicator` in Library.tsx so
+// both views feel like the same component.
+function GridPlayingIndicator({ state }: { state: "playing" | "paused" }) {
+  if (state === "paused") {
+    return (
+      <svg
+        className="w-3 h-3"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        style={{ color: "var(--accent-on-accent)" }}
+      >
+        <rect x="6" y="5" width="4" height="14" rx="1" />
+        <rect x="14" y="5" width="4" height="14" rx="1" />
+      </svg>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-end gap-[2px] h-3"
+      style={{ color: "var(--accent-on-accent)" }}
+      aria-label="Playing"
+    >
+      <span
+        className="w-[3px] rounded-sm"
+        style={{
+          background: "currentColor",
+          animation: "lib-eq 0.9s ease-in-out infinite",
+          height: "40%",
+        }}
+      />
+      <span
+        className="w-[3px] rounded-sm"
+        style={{
+          background: "currentColor",
+          animation: "lib-eq 0.9s ease-in-out 0.15s infinite",
+          height: "80%",
+        }}
+      />
+      <span
+        className="w-[3px] rounded-sm"
+        style={{
+          background: "currentColor",
+          animation: "lib-eq 0.9s ease-in-out 0.3s infinite",
+          height: "60%",
+        }}
+      />
+    </span>
+  );
 }
 
 const SIZE_MAP: Record<CardSize, number> = {
@@ -34,11 +92,13 @@ function AlbumCardInner({
   onContextMenu,
   selected = false,
   stretch = false,
+  playState = "idle",
 }: AlbumCardProps) {
   const artPx = SIZE_MAP[size];
   const title = item.title || item.name || "Unknown";
   const artist = item.artist || "Unknown artist";
   const art = item.artwork_hash ? artworkUrl(item.artwork_hash) : null;
+  const isActive = playState !== "idle";
 
   const handleClick = (e: React.MouseEvent) => {
     if (onClick) onClick(item, e);
@@ -144,7 +204,11 @@ function AlbumCardInner({
       className="group cursor-pointer transition-transform duration-200"
       style={{
         width: stretch ? "100%" : artPx,
-        outline: selected ? "2px solid var(--accent)" : "none",
+        outline: selected
+          ? "2px solid var(--accent)"
+          : isActive
+          ? "2px solid var(--accent)"
+          : "none",
         outlineOffset: 2,
         borderRadius: "var(--radius-card)",
       }}
@@ -158,7 +222,9 @@ function AlbumCardInner({
             : { height: artPx }),
           borderRadius: "var(--radius-card)",
           background: "var(--bg-elevated)",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+          boxShadow: isActive
+            ? "0 4px 20px var(--accent-soft)"
+            : "0 4px 16px rgba(0,0,0,0.25)",
         }}
       >
         {art ? (
@@ -176,6 +242,26 @@ function AlbumCardInner({
             <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z" />
             </svg>
+          </div>
+        )}
+        {/* Now-playing badge — pinned to the top-left corner of the
+            artwork for the card that matches the currently-loaded
+            track. Persists regardless of hover so the user can always
+            see at a glance which tile is "live". */}
+        {isActive && (
+          <div
+            className="absolute top-2 left-2 flex items-center justify-center"
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: "var(--radius-chip)",
+              background: "var(--accent)",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
+            }}
+          >
+            <GridPlayingIndicator
+              state={playState === "paused" ? "paused" : "playing"}
+            />
           </div>
         )}
         {/* Hover play overlay */}
@@ -208,7 +294,9 @@ function AlbumCardInner({
       <div className="mt-2.5 px-0.5">
         <div
           className="text-[13px] font-medium truncate"
-          style={{ color: "var(--text-primary)" }}
+          style={{
+            color: isActive ? "var(--accent)" : "var(--text-primary)",
+          }}
           title={title}
         >
           {title}

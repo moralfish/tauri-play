@@ -8,8 +8,10 @@ pub fn upsert_media_item(conn: &Connection, item: &MediaItem) -> Result<()> {
     conn.execute(
         "INSERT INTO media_items (id, source_id, source_type, external_id, name, mime_type, kind,
             title, artist, album, album_artist, track_number, duration_secs, year, genre,
-            artwork_hash, file_size, last_modified, gdrive_parent_folder_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+            artwork_hash, file_size, last_modified, gdrive_parent_folder_id,
+            bpm, initial_key, energy, comment)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19,
+                 ?20, ?21, ?22, ?23)
          ON CONFLICT(source_type, external_id) DO UPDATE SET
             name = excluded.name,
             mime_type = excluded.mime_type,
@@ -25,7 +27,11 @@ pub fn upsert_media_item(conn: &Connection, item: &MediaItem) -> Result<()> {
             artwork_hash = excluded.artwork_hash,
             file_size = excluded.file_size,
             last_modified = excluded.last_modified,
-            gdrive_parent_folder_id = COALESCE(excluded.gdrive_parent_folder_id, media_items.gdrive_parent_folder_id)",
+            gdrive_parent_folder_id = COALESCE(excluded.gdrive_parent_folder_id, media_items.gdrive_parent_folder_id),
+            bpm = COALESCE(excluded.bpm, media_items.bpm),
+            initial_key = COALESCE(excluded.initial_key, media_items.initial_key),
+            energy = COALESCE(excluded.energy, media_items.energy),
+            comment = COALESCE(excluded.comment, media_items.comment)",
         params![
             item.id,
             item.source_id,
@@ -46,6 +52,10 @@ pub fn upsert_media_item(conn: &Connection, item: &MediaItem) -> Result<()> {
             item.file_size,
             item.last_modified,
             item.gdrive_parent_folder_id,
+            item.bpm.map(|v| v as f64),
+            item.initial_key,
+            item.energy.map(|v| v as i32),
+            item.comment,
         ],
     )?;
     Ok(())
@@ -72,9 +82,13 @@ fn row_to_media_item(row: &rusqlite::Row) -> rusqlite::Result<MediaItem> {
         file_size: row.get(16)?,
         last_modified: row.get(17)?,
         gdrive_parent_folder_id: row.get(18)?,
-        play_count: row.get::<_, Option<i32>>(19)?.unwrap_or(0) as u32,
-        last_played_at: row.get(20)?,
-        is_favorite: row.get::<_, Option<i64>>(21)?.is_some(),
+        bpm: row.get::<_, Option<f64>>(19)?.map(|v| v as f32),
+        initial_key: row.get(20)?,
+        energy: row.get::<_, Option<i32>>(21)?.map(|v| v as u32),
+        comment: row.get(22)?,
+        play_count: row.get::<_, Option<i32>>(23)?.unwrap_or(0) as u32,
+        last_played_at: row.get(24)?,
+        is_favorite: row.get::<_, Option<i64>>(25)?.is_some(),
     })
 }
 
@@ -82,11 +96,13 @@ fn row_to_media_item(row: &rusqlite::Row) -> rusqlite::Result<MediaItem> {
 /// full `MediaItem` back. The last three columns come from LEFT JOINs so
 /// they're nullable: `play_count` defaults to 0, `last_played_at` stays None
 /// for never-played tracks, and `is_favorite` is derived from whether the
-/// `favorites` join produced a row.
+/// `favorites` join produced a row. The DJ columns (bpm/key/energy/comment)
+/// live on the `media_items` row itself and come straight out of SELECT.
 const MEDIA_ITEM_COLS: &str =
     "m.id, m.source_id, m.source_type, m.external_id, m.name, m.mime_type, m.kind, \
      m.title, m.artist, m.album, m.album_artist, m.track_number, m.duration_secs, m.year, m.genre, \
      m.artwork_hash, m.file_size, m.last_modified, m.gdrive_parent_folder_id, \
+     m.bpm, m.initial_key, m.energy, m.comment, \
      COALESCE(m.play_count, 0) AS play_count, \
      ph.last_played_at AS last_played_at, \
      f.media_id AS favorite_id";

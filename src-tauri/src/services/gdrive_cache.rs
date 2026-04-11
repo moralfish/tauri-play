@@ -166,6 +166,18 @@ async fn ensure_cached_inner(state: &AppState, media_id: &str) -> anyhow::Result
         if updated.genre.is_none() {
             updated.genre = meta.genre;
         }
+        if updated.bpm.is_none() {
+            updated.bpm = meta.bpm;
+        }
+        if updated.initial_key.is_none() {
+            updated.initial_key = meta.initial_key;
+        }
+        if updated.energy.is_none() {
+            updated.energy = meta.energy;
+        }
+        if updated.comment.is_none() {
+            updated.comment = meta.comment;
+        }
         if let Some(art) = meta.artwork {
             updated.artwork_hash = Some(art.hash.clone());
             if let Ok(conn) = state.db.lock() {
@@ -452,6 +464,18 @@ async fn hydrate_one_metadata(
     }
     if updated.genre.is_none() {
         updated.genre = meta.genre;
+    }
+    if updated.bpm.is_none() {
+        updated.bpm = meta.bpm;
+    }
+    if updated.initial_key.is_none() {
+        updated.initial_key = meta.initial_key;
+    }
+    if updated.energy.is_none() {
+        updated.energy = meta.energy;
+    }
+    if updated.comment.is_none() {
+        updated.comment = meta.comment;
     }
     if let Some(art) = meta.artwork {
         updated.artwork_hash = Some(art.hash.clone());

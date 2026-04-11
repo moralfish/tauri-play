@@ -91,6 +91,11 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         set_user_version(conn, 4)?;
     }
 
+    if version < 5 {
+        migrate_v5(conn)?;
+        set_user_version(conn, 5)?;
+    }
+
     Ok(())
 }
 
@@ -206,6 +211,43 @@ fn migrate_v3(conn: &Connection) -> Result<()> {
          ON media_items(gdrive_parent_folder_id);",
     )?;
 
+    Ok(())
+}
+
+fn migrate_v5(conn: &Connection) -> Result<()> {
+    // DJ-oriented metadata columns. Most of these come from ID3v2 frames
+    // that normal tag readers ignore but that Mixed In Key / Rekordbox /
+    // Serato / iTunes DJ tools all write:
+    //
+    //   - bpm          → TBPM (float; DJ tools often store 124.00)
+    //   - initial_key  → TKEY (Camelot or Open Key notation — "8A", "Cm")
+    //   - energy       → TXXX:EnergyLevel (1..10 integer)
+    //   - comment      → COMM frame (free-form; DJ tools stuff cue info here)
+    //
+    // Columns are nullable so existing rows stay valid; they get populated
+    // the next time each track's tags are read (local scan, gdrive metadata
+    // sync, or an explicit write-back from the metadata editor).
+    let new_columns = [
+        ("bpm", "REAL"),
+        ("initial_key", "TEXT"),
+        ("energy", "INTEGER"),
+        ("comment", "TEXT"),
+    ];
+    for (col, col_type) in &new_columns {
+        let exists: bool = conn
+            .prepare(&format!(
+                "SELECT COUNT(*) FROM pragma_table_info('media_items') WHERE name = '{}'",
+                col
+            ))?
+            .query_row([], |row| row.get::<_, i32>(0))
+            .map(|count| count > 0)?;
+        if !exists {
+            conn.execute_batch(&format!(
+                "ALTER TABLE media_items ADD COLUMN {} {};",
+                col, col_type
+            ))?;
+        }
+    }
     Ok(())
 }
 

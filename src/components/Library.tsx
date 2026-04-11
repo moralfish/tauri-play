@@ -1182,6 +1182,8 @@ export default function Library() {
           onRowClick={handleRowClick}
           onRowContextMenu={handleRowContextMenu}
           onPlay={(_it, index) => setQueue(sortedItems, index)}
+          currentItemId={currentItemId}
+          isAudioPlaying={isAudioPlaying}
         />
       ) : (
       // `min-h-0` is the critical piece here — without it, a `flex-1`

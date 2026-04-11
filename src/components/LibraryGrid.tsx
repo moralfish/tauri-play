@@ -27,6 +27,11 @@ interface LibraryGridProps {
   onRowClick: (item: MediaItem, index: number, e: React.MouseEvent) => void;
   onRowContextMenu: (item: MediaItem, index: number, e: React.MouseEvent) => void;
   onPlay: (item: MediaItem, index: number) => void;
+  /** id of the track currently loaded in the playback store, or null.
+   *  Used together with `isAudioPlaying` so the matching grid card can
+   *  render the accent outline + EQ badge that mirror the list view. */
+  currentItemId: string | null;
+  isAudioPlaying: boolean;
 }
 
 const CARD_WIDTH = 180; // minimum AlbumCard size=lg artwork width
@@ -42,6 +47,8 @@ export default function LibraryGrid({
   onRowClick,
   onRowContextMenu,
   onPlay,
+  currentItemId,
+  isAudioPlaying,
 }: LibraryGridProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [viewportHeight, setViewportHeight] = useState(600);
@@ -175,6 +182,12 @@ export default function LibraryGrid({
       >
         {visibleSlice.map((item, i) => {
           const index = startItem + i;
+          const playState =
+            currentItemId === item.id
+              ? isAudioPlaying
+                ? "playing"
+                : "paused"
+              : "idle";
           return (
             <AlbumCard
               key={item.id}
@@ -183,6 +196,7 @@ export default function LibraryGrid({
               layout="stacked"
               stretch
               selected={selectedIds.has(item.id)}
+              playState={playState}
               onClick={(it, e) => onRowClick(it, index, e)}
               onContextMenu={(it, e) => onRowContextMenu(it, index, e)}
               onPlay={(it) => {
