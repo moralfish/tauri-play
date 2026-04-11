@@ -2,7 +2,7 @@ use crate::db::queries;
 use crate::providers::gdrive::api as gdrive_api;
 use crate::services::{metadata, waveform};
 use crate::state::AppState;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use tauri::Emitter;
@@ -22,12 +22,59 @@ fn mark_finished(media_id: &str) {
     in_flight().lock().unwrap().remove(media_id);
 }
 
+/// LIFO priority queue of media ids that the user has actively played and
+/// that should jump the background metadata-sync line. Populated by
+/// `ensure_cached_in_background` (play-driven) and drained by
+/// `sync_gdrive_metadata_inner` at the top of every worker-dispatch loop.
+/// Most-recent push wins so rapid track switching always favors the latest
+/// intent.
+fn priority_queue() -> &'static Mutex<Vec<String>> {
+    static Q: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    Q.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn push_priority(media_id: &str) {
+    let mut q = priority_queue().lock().unwrap();
+    // Dedup — if it's already queued we don't need a second entry. Move it
+    // to the tail so it still reflects the latest user intent.
+    if let Some(idx) = q.iter().position(|id| id == media_id) {
+        q.remove(idx);
+    }
+    q.push(media_id.to_string());
+}
+
+/// Pull the freshest priority id that still exists in `pending`, removing
+/// it from both the priority queue and the pending deque. Stale entries
+/// (items already processed by the play path, or not in this sync pass)
+/// are discarded as we walk the queue.
+fn take_next_priority(pending: &mut VecDeque<crate::models::MediaItem>) -> Option<crate::models::MediaItem> {
+    let mut q = priority_queue().lock().unwrap();
+    while let Some(id) = q.pop() {
+        if let Some(pos) = pending.iter().position(|it| it.id == id) {
+            return pending.remove(pos);
+        }
+    }
+    None
+}
+
 /// Best-effort: ensure a Google Drive media item is mirrored into the local
 /// cache and that we have decoded metadata + waveform peaks for it. Returns
 /// immediately if the item is already cached or already being processed.
 /// All errors are logged and swallowed because this runs in the background.
+///
+/// Always pushes the id onto the priority queue first so that even if the
+/// background metadata-sync loop is holding the claim on this item, the
+/// next worker slot it frees up will jump straight to the user's track
+/// instead of continuing to chew through the cold tail of the library.
 pub fn ensure_cached_in_background(state: AppState, media_id: String) {
+    // Signal to sync: this id is user-driven, process it next.
+    push_priority(&media_id);
+
     if !mark_started(&media_id) {
+        // Already being downloaded (by a prior play-path call or by the
+        // sync worker that happens to be on this item right now). The
+        // priority push above ensures we don't get starved on any
+        // subsequent sync iterations.
         return;
     }
 
@@ -241,7 +288,23 @@ async fn sync_gdrive_metadata_inner(state: &AppState) -> anyhow::Result<()> {
     let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut join_set: tokio::task::JoinSet<()> = tokio::task::JoinSet::new();
 
-    for item in items.into_iter() {
+    // Deque so we can both pop from the head in normal iteration and
+    // remove arbitrary indices when the play path has flagged something
+    // as high priority.
+    let mut pending: VecDeque<crate::models::MediaItem> = items.into();
+
+    loop {
+        // Priority drain: any items the user has clicked play on since the
+        // last iteration jump to the front of the line. Only fall back to
+        // the cold tail once no priority items remain.
+        let item = match take_next_priority(&mut pending) {
+            Some(it) => it,
+            None => match pending.pop_front() {
+                Some(it) => it,
+                None => break,
+            },
+        };
+
         // Skip items that the playback path is already handling — no point
         // racing the same download twice.
         if !mark_started(&item.id) {
