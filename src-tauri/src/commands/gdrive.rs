@@ -3,7 +3,7 @@ use crate::providers::gdrive::{api, oauth::OAuthManager};
 use crate::state::AppState;
 use serde::Serialize;
 use std::sync::Arc;
-use tauri::{Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Serialize)]
@@ -158,26 +158,31 @@ fn urldecode(s: &str) -> String {
 }
 
 #[tauri::command]
-pub fn disconnect_gdrive(state: State<'_, AppState>) -> Result<(), String> {
+pub fn disconnect_gdrive(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     // Remove token file
     let token_path = state.app_data_dir.join("gdrive_token.json");
     if token_path.exists() {
         std::fs::remove_file(&token_path).map_err(|e| e.to_string())?;
     }
 
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
 
-    // Remove GDrive media items
-    conn.execute("DELETE FROM media_items WHERE source_type = 'gdrive'", [])
-        .map_err(|e| e.to_string())?;
+        // Every gdrive track — file_cache / waveform_cache / playlist_entries
+        // rows cascade automatically thanks to the FK constraints.
+        queries::delete_media_items_by_source(&conn, "gdrive")
+            .map_err(|e| e.to_string())?;
+        queries::prune_orphan_artwork(&conn).ok();
 
-    // Remove GDrive scan folders
-    conn.execute("DELETE FROM gdrive_scan_folders", [])
-        .map_err(|e| e.to_string())?;
+        // Remove GDrive scan folders
+        conn.execute("DELETE FROM gdrive_scan_folders", [])
+            .map_err(|e| e.to_string())?;
 
-    // Remove credentials
-    queries::remove_gdrive_config(&conn).map_err(|e| e.to_string())?;
+        // Remove credentials
+        queries::remove_gdrive_config(&conn).map_err(|e| e.to_string())?;
+    }
 
+    let _ = app.emit("library-updated", ());
     Ok(())
 }
 
@@ -241,11 +246,23 @@ pub fn add_gdrive_folder(
 
 #[tauri::command]
 pub fn remove_gdrive_folder(
+    app: AppHandle,
     state: State<'_, AppState>,
     folder_id: String,
-) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    queries::remove_gdrive_scan_folder(&conn, &folder_id).map_err(|e| e.to_string())
+) -> Result<usize, String> {
+    let removed = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        queries::remove_gdrive_scan_folder(&conn, &folder_id)
+            .map_err(|e| e.to_string())?;
+        // Drop every track that was discovered under this folder. The FK
+        // cascade sweeps caches and playlist entries with it.
+        let n = queries::delete_gdrive_items_by_folder(&conn, &folder_id)
+            .map_err(|e| e.to_string())?;
+        queries::prune_orphan_artwork(&conn).ok();
+        n
+    };
+    let _ = app.emit("library-updated", ());
+    Ok(removed)
 }
 
 #[tauri::command]

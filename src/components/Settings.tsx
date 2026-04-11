@@ -5,6 +5,8 @@ import {
   addDirectory,
   getCacheStats,
   clearCache,
+  setCacheMaxBytes,
+  openCacheFolder,
   scanLibrary,
   connectGDrive,
   disconnectGDrive,
@@ -13,10 +15,12 @@ import {
   addGDriveFolder,
   removeGDriveFolder,
   getGDriveFolders,
+  flushLibrary,
 } from "../api/commands";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useContextMenu } from "./ContextMenu";
+import { useConfirm } from "./ConfirmDialog";
 import { useLibraryStore } from "../stores/libraryStore";
 import { useThemeStore } from "../stores/themeStore";
 import type { CacheStats, GDriveStatus, GDriveFolder } from "../types";
@@ -92,9 +96,13 @@ function AppearanceSelector() {
 export default function Settings() {
   const [directories, setDirectories] = useState<[string, string][]>([]);
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
+  const [cacheCapInput, setCacheCapInput] = useState<string>("");
+  const [savingCacheCap, setSavingCacheCap] = useState(false);
   const [loading, setLoading] = useState(false);
   const { showMenu } = useContextMenu();
+  const confirm = useConfirm();
   const refresh = useLibraryStore((s) => s.refresh);
+  const [flushing, setFlushing] = useState(false);
 
   // GDrive state
   const [gdriveStatus, setGDriveStatus] = useState<GDriveStatus | null>(null);
@@ -128,8 +136,34 @@ export default function Settings() {
     try {
       const stats = await getCacheStats();
       setCacheStats(stats);
+      // Seed the input with the current cap expressed in gigabytes.
+      const gb = stats.max_bytes / (1024 * 1024 * 1024);
+      setCacheCapInput(gb.toFixed(gb < 10 ? 1 : 0));
     } catch (e) {
       console.error("Failed to load cache stats:", e);
+    }
+  };
+
+  const handleSaveCacheCap = async () => {
+    const gb = parseFloat(cacheCapInput);
+    if (!isFinite(gb) || gb <= 0) return;
+    setSavingCacheCap(true);
+    try {
+      const bytes = Math.round(gb * 1024 * 1024 * 1024);
+      await setCacheMaxBytes(bytes);
+      await loadCacheStats();
+    } catch (e) {
+      console.error("Failed to save cache cap:", e);
+    } finally {
+      setSavingCacheCap(false);
+    }
+  };
+
+  const handleOpenCacheFolder = async () => {
+    try {
+      await openCacheFolder();
+    } catch (e) {
+      console.error("Failed to open cache folder:", e);
     }
   };
 
@@ -237,11 +271,20 @@ export default function Settings() {
   };
 
   const handleDisconnectGDrive = async () => {
+    const ok = await confirm({
+      title: "Disconnect Google Drive?",
+      message:
+        "This will sign out of Google Drive and remove every track that was synced from Drive from your library. The original files in Drive are not touched. You can reconnect later.",
+      destructive: true,
+      confirmLabel: "Disconnect",
+    });
+    if (!ok) return;
     try {
       await disconnectGDrive();
       setGDriveStatus({ connected: false, has_credentials: false });
       setGDriveFolders([]);
       setShowFolderBrowser(false);
+      await refresh();
     } catch (e) {
       console.error("Failed to disconnect:", e);
     }
@@ -284,12 +327,51 @@ export default function Settings() {
   };
 
   const handleRemoveGDriveFolder = async (folderId: string) => {
+    const folder = gdriveFolders.find((f) => f.id === folderId);
+    const ok = await confirm({
+      title: "Remove folder from library?",
+      message: (
+        <>
+          Stop syncing{" "}
+          <span style={{ color: "var(--text-primary)" }}>
+            {folder?.name ?? "this folder"}
+          </span>{" "}
+          and remove every track it contributed from your library? The files
+          in Google Drive are not touched.
+        </>
+      ),
+      destructive: true,
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
     try {
       await removeGDriveFolder(folderId);
       const folders = await getGDriveFolders();
       setGDriveFolders(folders);
+      await refresh();
     } catch (e) {
       console.error("Failed to remove folder:", e);
+    }
+  };
+
+  const handleFlushLibrary = async () => {
+    const ok = await confirm({
+      title: "Flush entire library?",
+      message:
+        "This removes every track from the library database, plus cached audio and waveform data. Your scan sources (local folders, Google Drive folders) are kept, so you can re-scan to rebuild the library. The original files are not touched.",
+      destructive: true,
+      confirmLabel: "Flush library",
+    });
+    if (!ok) return;
+    setFlushing(true);
+    try {
+      await flushLibrary();
+      await refresh();
+      await loadCacheStats();
+    } catch (e) {
+      console.error("Failed to flush library:", e);
+    } finally {
+      setFlushing(false);
     }
   };
 
@@ -585,8 +667,13 @@ export default function Settings() {
 
                 <button
                   onClick={handleRescan}
-                  disabled={loading}
-                  className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50"
+                  disabled={loading || gdriveFolders.length === 0}
+                  title={
+                    gdriveFolders.length === 0
+                      ? "Add at least one scan folder first"
+                      : undefined
+                  }
+                  className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{
                     background: 'var(--bg-button-secondary)',
                     border: '1px solid var(--border)',
@@ -839,41 +926,180 @@ export default function Settings() {
           <h3 className="text-[11px] font-medium uppercase tracking-wider px-1" style={{ color: 'var(--text-muted)' }}>
             Cache
           </h3>
-          <div className="p-4 space-y-3" style={cardStyle}>
+          <div className="p-4 space-y-4" style={cardStyle}>
             {cacheStats ? (
-              <div className="flex items-center gap-6">
-                <div>
-                  <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {formatBytes(cacheStats.total_bytes)}
+              <>
+                {/* Stats row */}
+                <div className="flex items-center gap-6">
+                  <div>
+                    <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {formatBytes(cacheStats.total_bytes)}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Total size</div>
                   </div>
-                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Total size</div>
-                </div>
-                <div>
-                  <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {cacheStats.item_count}
+                  <div>
+                    <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {cacheStats.item_count}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Cached files</div>
                   </div>
-                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Cached files</div>
+                  <div>
+                    <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {formatBytes(cacheStats.max_bytes)}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Max size</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>2 GB</div>
-                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Max size</div>
+
+                {/* Usage bar */}
+                <div
+                  className="h-1.5 rounded-full overflow-hidden"
+                  style={{ background: 'var(--bg-hover)' }}
+                >
+                  <div
+                    className="h-full transition-all duration-300"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (cacheStats.total_bytes / Math.max(1, cacheStats.max_bytes)) * 100
+                      )}%`,
+                      background: 'var(--accent)',
+                    }}
+                  />
                 </div>
-              </div>
+
+                {/* Cache cap editor */}
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <label
+                      className="block text-xs mb-1.5"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      Max cache size (GB)
+                    </label>
+                    <input
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      value={cacheCapInput}
+                      onChange={(e) => setCacheCapInput(e.target.value)}
+                      className="w-full h-10 rounded-xl px-3 text-sm outline-none"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <button
+                    onClick={handleSaveCacheCap}
+                    disabled={savingCacheCap || !cacheCapInput}
+                    className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50"
+                    style={{
+                      background: 'var(--accent)',
+                      color: 'var(--accent-on-accent)',
+                    }}
+                  >
+                    {savingCacheCap ? "Saving..." : "Save"}
+                  </button>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Cloud tracks are cached on disk after first play. When the
+                  cache exceeds this limit, the least recently played items
+                  are evicted automatically.
+                </p>
+
+                {/* Cache folder path */}
+                <div
+                  className="flex items-center gap-3 px-3 py-2 rounded-xl"
+                  style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}
+                >
+                  <svg
+                    className="w-4 h-4 flex-shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"
+                    />
+                  </svg>
+                  <code
+                    className="text-[11px] flex-1 truncate"
+                    style={{ color: 'var(--text-secondary)', fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
+                    title={cacheStats.cache_dir}
+                  >
+                    {cacheStats.cache_dir}
+                  </code>
+                </div>
+              </>
             ) : (
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading cache info...</p>
             )}
-            <button
-              onClick={handleClearCache}
-              disabled={loading}
-              className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50"
-              style={{
-                background: 'rgba(248,113,113,0.1)',
-                border: '1px solid rgba(248,113,113,0.2)',
-                color: 'rgba(248,113,113,0.8)',
-              }}
-            >
-              {loading ? "Clearing..." : "Clear Cache"}
-            </button>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleOpenCacheFolder}
+                disabled={!cacheStats}
+                className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50 flex items-center gap-2"
+                style={{
+                  background: 'var(--bg-button-secondary)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                </svg>
+                Open Cache Folder
+              </button>
+              <button
+                onClick={handleClearCache}
+                disabled={loading || !cacheStats || cacheStats.item_count === 0}
+                className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50"
+                style={{
+                  background: 'rgba(248,113,113,0.1)',
+                  border: '1px solid rgba(248,113,113,0.2)',
+                  color: 'rgba(248,113,113,0.8)',
+                }}
+              >
+                {loading ? "Clearing..." : "Clear Cache"}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Danger zone */}
+        <section className="space-y-2">
+          <h3 className="text-[11px] font-medium uppercase tracking-wider px-1" style={{ color: 'var(--text-muted)' }}>
+            Danger Zone
+          </h3>
+          <div className="p-4 space-y-3" style={cardStyle}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                  Flush Library
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Removes every track, cached audio, and waveform data. Your
+                  scan sources are preserved so you can re-scan to rebuild.
+                  Original files are not touched.
+                </div>
+              </div>
+              <button
+                onClick={handleFlushLibrary}
+                disabled={flushing}
+                className="h-10 px-4 rounded-xl text-sm font-medium transition-colors duration-150 disabled:opacity-50 shrink-0"
+                style={{
+                  background: 'rgba(248,113,113,0.1)',
+                  border: '1px solid rgba(248,113,113,0.2)',
+                  color: 'rgba(248,113,113,0.9)',
+                }}
+              >
+                {flushing ? "Flushing..." : "Flush library"}
+              </button>
+            </div>
           </div>
         </section>
 

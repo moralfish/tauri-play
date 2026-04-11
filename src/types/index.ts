@@ -20,6 +20,7 @@ export interface MediaItem {
   artwork_hash: string | null;
   file_size: number | null;
   last_modified: number | null;
+  gdrive_parent_folder_id?: string | null;
 }
 
 export interface Playlist {
@@ -61,6 +62,8 @@ export interface WriteMetadata {
 export interface CacheStats {
   total_bytes: number;
   item_count: number;
+  max_bytes: number;
+  cache_dir: string;
 }
 
 export interface GDriveStatus {

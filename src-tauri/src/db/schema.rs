@@ -81,6 +81,11 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         set_user_version(conn, 2)?;
     }
 
+    if version < 3 {
+        migrate_v3(conn)?;
+        set_user_version(conn, 3)?;
+    }
+
     Ok(())
 }
 
@@ -169,6 +174,31 @@ fn migrate_v2(conn: &Connection) -> Result<()> {
             folder_name TEXT NOT NULL
         );
         ",
+    )?;
+
+    Ok(())
+}
+
+fn migrate_v3(conn: &Connection) -> Result<()> {
+    // Track the parent GDrive folder a media item was discovered under so
+    // that removing a folder from the scan list can delete exactly the
+    // tracks it sourced — no API round-trip, no cross-referencing.
+    let exists: bool = conn
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('media_items') WHERE name = 'gdrive_parent_folder_id'",
+        )?
+        .query_row([], |row| row.get::<_, i32>(0))
+        .map(|count| count > 0)?;
+    if !exists {
+        conn.execute_batch(
+            "ALTER TABLE media_items ADD COLUMN gdrive_parent_folder_id TEXT;",
+        )?;
+    }
+
+    // Helpful index for the folder-scoped delete.
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_media_items_gdrive_folder \
+         ON media_items(gdrive_parent_folder_id);",
     )?;
 
     Ok(())

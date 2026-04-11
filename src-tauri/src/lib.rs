@@ -21,6 +21,9 @@ pub fn run() {
             let db = Arc::new(std::sync::Mutex::new(db_conn));
 
             let cache_manager = Arc::new(services::cache::CacheManager::new(&app_dir));
+            if let Ok(conn) = db.lock() {
+                cache_manager.load_config(&conn);
+            }
 
             let app_state = state::AppState {
                 db: db.clone(),
@@ -65,6 +68,8 @@ pub fn run() {
             commands::library::write_metadata,
             commands::library::save_app_state,
             commands::library::get_app_state,
+            commands::library::delete_media_items,
+            commands::library::flush_library,
             commands::playlist::get_playlists,
             commands::playlist::get_playlist_tracks,
             commands::playlist::create_playlist,
@@ -77,6 +82,8 @@ pub fn run() {
             commands::playback::get_waveform,
             commands::playback::get_cache_stats,
             commands::playback::clear_cache,
+            commands::playback::set_cache_max_bytes,
+            commands::playback::open_cache_folder,
             commands::gdrive::connect_gdrive,
             commands::gdrive::disconnect_gdrive,
             commands::gdrive::get_gdrive_status,

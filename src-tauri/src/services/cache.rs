@@ -1,14 +1,20 @@
 use anyhow::Result;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Default upper bound for the cloud media cache. LRU eviction kicks in
 /// once `total_size` exceeds this. Roughly 10 GB.
 pub const DEFAULT_MAX_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 
+/// sync_state key used to persist the user-configured cap.
+const MAX_BYTES_KEY: &str = "cache_max_bytes";
+
 pub struct CacheManager {
     cache_dir: PathBuf,
-    max_bytes: u64,
+    /// Atomic so Settings can mutate the cap at runtime without needing a
+    /// writer lock on the whole manager.
+    max_bytes: AtomicU64,
 }
 
 impl CacheManager {
@@ -17,8 +23,38 @@ impl CacheManager {
         std::fs::create_dir_all(&cache_dir).ok();
         Self {
             cache_dir,
-            max_bytes: DEFAULT_MAX_BYTES,
+            max_bytes: AtomicU64::new(DEFAULT_MAX_BYTES),
         }
+    }
+
+    /// Load the persisted cap (if any) from the sync_state table and apply
+    /// it to this manager. Safe to call at startup before any cache work.
+    pub fn load_config(&self, conn: &Connection) {
+        if let Ok(Some(raw)) = crate::db::queries::get_sync_state(conn, MAX_BYTES_KEY) {
+            if let Ok(value) = raw.parse::<u64>() {
+                if value > 0 {
+                    self.max_bytes.store(value, Ordering::Relaxed);
+                }
+            }
+        }
+    }
+
+    pub fn get_max_bytes(&self) -> u64 {
+        self.max_bytes.load(Ordering::Relaxed)
+    }
+
+    /// Persist a new cap and immediately enforce it. A value of 0 resets to
+    /// the default.
+    pub fn set_max_bytes(&self, conn: &Connection, value: u64) -> Result<()> {
+        let effective = if value == 0 { DEFAULT_MAX_BYTES } else { value };
+        self.max_bytes.store(effective, Ordering::Relaxed);
+        crate::db::queries::set_sync_state(conn, MAX_BYTES_KEY, &effective.to_string())?;
+        self.evict_if_needed(conn)?;
+        Ok(())
+    }
+
+    pub fn cache_dir(&self) -> &Path {
+        &self.cache_dir
     }
 
     pub fn get_cached_path(&self, conn: &Connection, media_id: &str) -> Option<PathBuf> {
@@ -91,8 +127,9 @@ impl CacheManager {
     /// Always leaves at least one entry behind so the just-cached file isn't
     /// immediately evicted.
     pub fn evict_if_needed(&self, conn: &Connection) -> Result<()> {
+        let cap = self.max_bytes.load(Ordering::Relaxed);
         let mut total = self.total_size(conn)?;
-        if total <= self.max_bytes {
+        if total <= cap {
             return Ok(());
         }
 
@@ -106,7 +143,7 @@ impl CacheManager {
         drop(stmt);
 
         for (media_id, cache_path, file_size) in rows {
-            if total <= self.max_bytes {
+            if total <= cap {
                 break;
             }
             std::fs::remove_file(&cache_path).ok();

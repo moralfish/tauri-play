@@ -18,6 +18,10 @@ struct DriveFileList {
 
 /// Stream all audio/video files across the entire Google Drive via the
 /// `on_file` callback. Each file is yielded as soon as it arrives in a page.
+///
+/// Kept around for future "scan entire drive" support but currently unused:
+/// the GDrive provider only walks explicitly-selected folders.
+#[allow(dead_code)]
 pub async fn list_media_files(
     access_token: &str,
     on_file: &(dyn Fn(&DriveFile) + Send + Sync),

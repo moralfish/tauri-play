@@ -9,7 +9,8 @@ use crate::state::AppState;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Clone, Serialize)]
@@ -91,18 +92,22 @@ fn run_scan(app: &AppHandle) -> Result<ScanResult, String> {
         if let Ok(Some((client_id, client_secret))) = queries::get_gdrive_config(&conn) {
             let token_path = state.app_data_dir.join("gdrive_token.json");
             if token_path.exists() {
-                let oauth = Arc::new(OAuthManager::new(
-                    client_id,
-                    client_secret,
-                    state.app_data_dir.clone(),
-                ));
                 let gdrive_folders =
                     queries::get_gdrive_scan_folders(&conn).unwrap_or_default();
                 let folder_ids: Vec<String> = gdrive_folders
                     .iter()
                     .map(|(_, fid, _)| fid.clone())
                     .collect();
-                local_providers.push(Box::new(GDriveProvider::new(oauth, folder_ids)));
+                // Only add the GDrive provider when the user has explicitly
+                // selected folders. We never walk an entire Drive.
+                if !folder_ids.is_empty() {
+                    let oauth = Arc::new(OAuthManager::new(
+                        client_id,
+                        client_secret,
+                        state.app_data_dir.clone(),
+                    ));
+                    local_providers.push(Box::new(GDriveProvider::new(oauth, folder_ids)));
+                }
             }
         }
     }
@@ -136,12 +141,23 @@ fn run_scan(app: &AppHandle) -> Result<ScanResult, String> {
         // Stream items into the DB as they're discovered so they become
         // visible/playable as soon as the scan finishes — instead of waiting
         // for the entire (potentially very long) discovery walk to complete.
+        //
+        // Progress events are throttled: we emit at most once every 200 ms
+        // OR every 100 items, whichever comes first. Without this, a
+        // ten-thousand-file scan floods the webview with ten thousand
+        // React re-renders and the UI becomes unresponsive.
         let imported = AtomicUsize::new(0);
         let db = state.db.clone();
         let app_for_item = app.clone();
         let app_for_status = app.clone();
         let label_for_item = label.to_string();
         let label_for_status = label.to_string();
+        let last_item_emit = Mutex::new(Instant::now() - Duration::from_secs(1));
+        let last_status_emit = Mutex::new(Instant::now() - Duration::from_secs(1));
+
+        const ITEM_EMIT_INTERVAL: Duration = Duration::from_millis(200);
+        const ITEM_EMIT_EVERY_N: usize = 100;
+        const STATUS_EMIT_INTERVAL: Duration = Duration::from_millis(250);
 
         let scan_result = provider.scan_streaming(
             &|item: MediaItem| {
@@ -152,18 +168,46 @@ fn run_scan(app: &AppHandle) -> Result<ScanResult, String> {
                     }
                 }
                 let n = imported.fetch_add(1, Ordering::SeqCst) + 1;
-                let _ = app_for_item.emit(
-                    "scan-progress",
-                    ScanProgress {
-                        stage: "items".to_string(),
-                        message: format!("{}: imported {} files", label_for_item, n),
-                        current: n,
-                        total: 0,
-                        current_file: Some(item.name.clone()),
-                    },
-                );
+
+                // Throttle: emit only if enough time or items have elapsed.
+                let should_emit = {
+                    let mut last = last_item_emit.lock().unwrap();
+                    let now = Instant::now();
+                    if n % ITEM_EMIT_EVERY_N == 0 || now.duration_since(*last) >= ITEM_EMIT_INTERVAL {
+                        *last = now;
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if should_emit {
+                    let _ = app_for_item.emit(
+                        "scan-progress",
+                        ScanProgress {
+                            stage: "items".to_string(),
+                            message: format!("{}: imported {} files", label_for_item, n),
+                            current: n,
+                            total: 0,
+                            current_file: Some(item.name.clone()),
+                        },
+                    );
+                }
             },
             &|msg, file| {
+                // Throttle status updates similarly.
+                let should_emit = {
+                    let mut last = last_status_emit.lock().unwrap();
+                    let now = Instant::now();
+                    if now.duration_since(*last) >= STATUS_EMIT_INTERVAL {
+                        *last = now;
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if !should_emit {
+                    return;
+                }
                 let _ = app_for_status.emit(
                     "scan-progress",
                     ScanProgress {
@@ -243,6 +287,42 @@ fn run_scan(app: &AppHandle) -> Result<ScanResult, String> {
 pub fn get_media_items(state: State<'_, AppState>) -> Result<Vec<MediaItem>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     queries::get_all_media_items(&conn).map_err(|e| e.to_string())
+}
+
+/// Remove a specific set of tracks from the library. Cascades through
+/// file_cache / waveform_cache / playlist_entries. Also prunes any orphaned
+/// artwork rows that were only referenced by the removed tracks.
+#[tauri::command]
+pub fn delete_media_items(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<usize, String> {
+    let removed = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let n = queries::delete_media_items(&conn, &ids).map_err(|e| e.to_string())?;
+        queries::prune_orphan_artwork(&conn).ok();
+        n
+    };
+    let _ = app.emit("library-updated", ());
+    Ok(removed)
+}
+
+/// Nuke every track from the library. Source configuration (scan dirs,
+/// gdrive folders) is left alone — the user can rescan any time.
+#[tauri::command]
+pub fn flush_library(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let removed = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let n = queries::delete_all_media_items(&conn).map_err(|e| e.to_string())?;
+        queries::prune_orphan_artwork(&conn).ok();
+        n
+    };
+    let _ = app.emit("library-updated", ());
+    Ok(removed)
 }
 
 #[tauri::command]

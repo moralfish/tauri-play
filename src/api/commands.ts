@@ -17,6 +17,14 @@ export const removeDirectory = (id: string) =>
 export const getDirectories = () =>
   invoke<[string, string][]>("get_directories");
 
+// Remove a specific set of tracks from the library. Returns the number of
+// rows actually deleted.
+export const deleteMediaItems = (ids: string[]) =>
+  invoke<number>("delete_media_items", { ids });
+
+// Nuke every track from the library (source config is preserved).
+export const flushLibrary = () => invoke<number>("flush_library");
+
 // Metadata write-back
 export const writeMetadata = (mediaId: string, meta: WriteMetadata) =>
   invoke<MediaItem>("write_metadata", { mediaId, meta });
@@ -48,6 +56,9 @@ export const reorderPlaylist = (
 // Cache
 export const getCacheStats = () => invoke<CacheStats>("get_cache_stats");
 export const clearCache = () => invoke("clear_cache");
+export const setCacheMaxBytes = (maxBytes: number) =>
+  invoke("set_cache_max_bytes", { maxBytes });
+export const openCacheFolder = () => invoke("open_cache_folder");
 
 // App state persistence
 export const saveAppState = (key: string, value: string) =>
@@ -68,7 +79,7 @@ export const listGDriveFolders = (parentId?: string) =>
 export const addGDriveFolder = (folderId: string, folderName: string) =>
   invoke("add_gdrive_folder", { folderId, folderName });
 export const removeGDriveFolder = (folderId: string) =>
-  invoke("remove_gdrive_folder", { folderId });
+  invoke<number>("remove_gdrive_folder", { folderId });
 export const getGDriveFolders = () =>
   invoke<GDriveFolder[]>("get_gdrive_folders");
 

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use rusqlite::Connection;
 use std::path::Path;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::DecoderOptions;
@@ -98,30 +97,3 @@ pub fn generate_peaks(file_path: &Path) -> Result<Vec<f32>> {
     Ok(peaks)
 }
 
-pub fn get_or_generate_peaks(
-    conn: &Connection,
-    media_id: &str,
-    file_path: &Path,
-) -> Result<Vec<f32>> {
-    // Check cache first
-    if let Ok(cached) = conn.query_row(
-        "SELECT peaks FROM waveform_cache WHERE media_id = ?1",
-        rusqlite::params![media_id],
-        |row| row.get::<_, String>(0),
-    ) {
-        let peaks: Vec<f32> = serde_json::from_str(&cached)?;
-        return Ok(peaks);
-    }
-
-    // Generate
-    let peaks = generate_peaks(file_path)?;
-
-    // Cache
-    let peaks_json = serde_json::to_string(&peaks)?;
-    conn.execute(
-        "INSERT OR REPLACE INTO waveform_cache (media_id, peaks) VALUES (?1, ?2)",
-        rusqlite::params![media_id, peaks_json],
-    )?;
-
-    Ok(peaks)
-}

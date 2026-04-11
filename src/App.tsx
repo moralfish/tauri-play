@@ -7,16 +7,52 @@ import Settings from "./components/Settings";
 import Player from "./components/Player";
 import NowPlayingPanel from "./components/NowPlayingPanel";
 import ScanProgressModal from "./components/ScanProgressModal";
+import { ConfirmProvider } from "./components/ConfirmDialog";
 import { useThemeStore } from "./stores/themeStore";
 import { usePlaybackStore } from "./stores/playbackStore";
+import { useLibraryStore } from "./stores/libraryStore";
 
 type View = "library" | "playlist" | "settings";
 
+function StartupSpinner() {
+  return (
+    <div
+      className="h-screen w-screen flex items-center justify-center"
+      style={{ background: "var(--bg-app)" }}
+    >
+      <div className="flex flex-col items-center gap-4">
+        <div
+          className="w-10 h-10 rounded-full animate-spin"
+          style={{
+            border: "3px solid var(--border)",
+            borderTopColor: "var(--accent)",
+          }}
+        />
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Loading library…
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [view, setView] = useState<View>("library");
+  const isLoading = useLibraryStore((s) => s.isLoading);
+  const itemCount = useLibraryStore((s) => s.items.length);
 
+  // Init theme once on mount.
   useEffect(() => {
     useThemeStore.getState().init();
+  }, []);
+
+  // Hoist initial library load + event listener setup to App level so the
+  // tab views never have to refetch on mount. This is what eliminates the
+  // visible latency when switching between Library and Settings.
+  useEffect(() => {
+    const lib = useLibraryStore.getState();
+    lib.initEventListeners();
+    lib.refresh();
   }, []);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -73,27 +109,49 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  const renderContent = () => {
-    switch (view) {
-      case "library":
-        return <Library />;
-      case "playlist":
-        return <PlaylistView />;
-      case "settings":
-        return <Settings />;
-    }
-  };
+  // Show a full-screen spinner only on the very first load, before the
+  // backend has had a chance to return any items. Once items are in the
+  // store we render the real UI even if isLoading flips again later (scans).
+  if (isLoading && itemCount === 0) {
+    return <StartupSpinner />;
+  }
+
+  // Keep-alive routing: all three views stay mounted and we just toggle
+  // their visibility. Switching tabs becomes free (no unmount, no refetch,
+  // no re-running of useEffects, scroll position preserved).
+  const content = (
+    <>
+      <div
+        className="h-full w-full"
+        style={{ display: view === "library" ? "flex" : "none", flexDirection: "column" }}
+      >
+        <Library />
+      </div>
+      <div
+        className="h-full w-full"
+        style={{ display: view === "playlist" ? "flex" : "none", flexDirection: "column" }}
+      >
+        <PlaylistView />
+      </div>
+      <div
+        className="h-full w-full"
+        style={{ display: view === "settings" ? "flex" : "none", flexDirection: "column" }}
+      >
+        <Settings />
+      </div>
+    </>
+  );
 
   return (
-    <>
+    <ConfirmProvider>
       <Layout
         sidebar={<Sidebar onViewChange={setView} currentView={view} />}
-        content={renderContent()}
+        content={content}
         player={<Player />}
         rightPanel={<NowPlayingPanel />}
       />
       <ScanProgressModal />
-    </>
+    </ConfirmProvider>
   );
 }
 

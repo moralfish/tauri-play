@@ -43,6 +43,11 @@ pub struct MediaItem {
     pub artwork_hash: Option<String>,
     pub file_size: Option<i64>,
     pub last_modified: Option<i64>,
+    /// For gdrive items: the parent folder id they were discovered under.
+    /// Used so that removing a scanned gdrive folder can delete exactly the
+    /// tracks that folder sourced. None for local items.
+    #[serde(default)]
+    pub gdrive_parent_folder_id: Option<String>,
 }
 
 impl MediaItem {
@@ -75,6 +80,7 @@ impl MediaItem {
             artwork_hash: None,
             file_size: None,
             last_modified: None,
+            gdrive_parent_folder_id: None,
         }
     }
 }

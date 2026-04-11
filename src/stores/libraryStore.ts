@@ -8,6 +8,7 @@ const RECENT_FILES_LIMIT = 8;
 
 interface LibraryState {
   items: MediaItem[];
+  isLoading: boolean;
   isScanning: boolean;
   scanProgress: ScanProgress | null;
   scanRecentFiles: string[];
@@ -24,8 +25,26 @@ interface LibraryState {
 
 let listenersInitialized = false;
 
+// Debounce burst refetches so a flood of library-updated events (e.g. when
+// gdrive cache hydration finishes for dozens of tracks in a row, or a scan
+// emits progress after every file) collapses into a single getMediaItems()
+// round-trip. Holding this at ~250ms feels instantaneous to a user but
+// absorbs hundreds of rapid updates.
+let refetchTimer: ReturnType<typeof setTimeout> | null = null;
+const scheduleLibraryRefetch = (set: (s: Partial<LibraryState>) => void) => {
+  if (refetchTimer) return;
+  refetchTimer = setTimeout(() => {
+    refetchTimer = null;
+    api
+      .getMediaItems()
+      .then((items) => set({ items, isLoading: false }))
+      .catch(console.error);
+  }, 250);
+};
+
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   items: [],
+  isLoading: true,
   isScanning: false,
   scanProgress: null,
   scanRecentFiles: [],
@@ -60,9 +79,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   refresh: async () => {
     try {
       const items = await api.getMediaItems();
-      set({ items });
+      set({ items, isLoading: false });
     } catch (e) {
       console.error("Refresh failed:", e);
+      set({ isLoading: false });
     }
   },
 
@@ -76,7 +96,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
     // Background sync events (existing)
     listen("library-updated", () => {
-      api.getMediaItems().then((items) => set({ items })).catch(console.error);
+      scheduleLibraryRefetch(set);
     });
     listen("sync-started", () => {
       // Background sync — don't show the modal, just mark scanning
@@ -108,7 +128,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         scanRecentFiles: [],
         lastScan: e.payload,
       });
-      api.getMediaItems().then((items) => set({ items })).catch(console.error);
+      scheduleLibraryRefetch(set);
     });
     listen<string>("scan-error", (e) => {
       set({
@@ -120,11 +140,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     });
 
     // A cloud track just finished hydrating into the local cache —
-    // refresh metadata in the library and reload the waveform if the
-    // newly cached track is the one currently playing.
+    // trigger a debounced library refresh so the row picks up the new
+    // title/artist/artwork, and reload the waveform if the newly cached
+    // track is the one currently playing. We rely on the debouncer to
+    // collapse bursts (a sync can cache dozens of tracks in seconds).
     listen<string>("media-cached", (e) => {
       const mediaId = e.payload;
-      api.getMediaItems().then((items) => set({ items })).catch(console.error);
+      scheduleLibraryRefetch(set);
       const playback = usePlaybackStore.getState();
       if (playback.currentItem?.id === mediaId) {
         api

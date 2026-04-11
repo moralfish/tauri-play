@@ -30,7 +30,6 @@ export default function NowPlayingPanel() {
 
   const collapsed = usePlaybackStore((s) => s.rightSidebarCollapsed);
   const toggleCollapse = usePlaybackStore((s) => s.toggleRightSidebar);
-  const toggleRightPanel = usePlaybackStore((s) => s.toggleRightPanel);
 
   // Collapsed: narrow strip with artwork and controls
   if (collapsed) {
@@ -82,18 +81,6 @@ export default function NowPlayingPanel() {
         )}
 
         <div className="flex-1" />
-
-        {/* Close panel */}
-        <button
-          onClick={toggleRightPanel}
-          className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-150 hover:bg-[var(--bg-hover)]"
-          style={{ color: 'var(--text-muted)' }}
-          title="Close panel"
-        >
-          <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
       </div>
     );
   }
@@ -115,16 +102,6 @@ export default function NowPlayingPanel() {
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-            </svg>
-          </button>
-          <button
-            onClick={toggleRightPanel}
-            className="w-6 h-6 rounded-md flex items-center justify-center transition-colors duration-150 hover:bg-[var(--bg-hover)]"
-            style={{ color: 'var(--text-muted)' }}
-            title="Close panel"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>

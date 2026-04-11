@@ -106,3 +106,11 @@ input[type="range"].player-progress:hover::-webkit-slider-thumb {
   border-radius: 50%;
   background: var(--text-primary);
 }
+
+/* EQ bars animation for the "now playing" indicator in the library list.
+   Each bar has a different animation-delay so the bars appear to pulse
+   out of phase. */
+@keyframes lib-eq {
+  0%, 100% { height: 30%; }
+  50% { height: 100%; }
+}

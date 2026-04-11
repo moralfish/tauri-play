@@ -87,8 +87,13 @@ async fn ensure_cached_inner(state: &AppState, media_id: &str) -> anyhow::Result
         state.cache_manager.evict_if_needed(&conn).ok();
     }
 
-    // 5. Extract tag metadata via lofty and update the media row.
-    if let Ok(meta) = metadata::read_metadata(&cache_path) {
+    // 5. Extract tag metadata via lofty — this is CPU/IO blocking work, so
+    //    it runs on a dedicated blocking thread to keep Tokio workers free.
+    let meta_path = cache_path.clone();
+    let meta_result = tokio::task::spawn_blocking(move || metadata::read_metadata(&meta_path))
+        .await
+        .map_err(|e| anyhow::anyhow!("metadata task join failed: {}", e))?;
+    if let Ok(meta) = meta_result {
         let mut updated = item.clone();
         if updated.title.is_none() {
             updated.title = meta.title;
@@ -116,18 +121,49 @@ async fn ensure_cached_inner(state: &AppState, media_id: &str) -> anyhow::Result
         }
         if let Some(art) = meta.artwork {
             updated.artwork_hash = Some(art.hash.clone());
-            let conn = state.db.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
-            queries::upsert_artwork(&conn, &art.hash, &art.data, &art.mime_type).ok();
+            if let Ok(conn) = state.db.lock() {
+                queries::upsert_artwork(&conn, &art.hash, &art.data, &art.mime_type).ok();
+            }
         }
-        let conn = state.db.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
-        queries::upsert_media_item(&conn, &updated).ok();
+        if let Ok(conn) = state.db.lock() {
+            queries::upsert_media_item(&conn, &updated).ok();
+        }
     }
 
-    // 6. Generate waveform peaks (audio only). Best-effort: video files
-    //    won't decode through symphonia's audio probe, just skip.
-    {
-        let conn = state.db.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
-        let _ = waveform::get_or_generate_peaks(&conn, media_id, &cache_path);
+    // 6. Generate waveform peaks (audio only). Symphonia fully decodes the
+    //    file, which is very CPU-heavy. The DB lock is only held for the
+    //    tiny check-cache / write-peaks bookkeeping — the actual decode
+    //    happens lock-free on a blocking thread, so UI queries can still
+    //    run while a huge waveform is being computed.
+    let already_have_peaks = {
+        if let Ok(conn) = state.db.lock() {
+            conn.query_row(
+                "SELECT 1 FROM waveform_cache WHERE media_id = ?1",
+                rusqlite::params![media_id],
+                |_| Ok(()),
+            )
+            .is_ok()
+        } else {
+            false
+        }
+    };
+    if !already_have_peaks {
+        let peak_path = cache_path.clone();
+        let peaks_result =
+            tokio::task::spawn_blocking(move || waveform::generate_peaks(&peak_path))
+                .await
+                .map_err(|e| anyhow::anyhow!("waveform task join failed: {}", e))?;
+        if let Ok(peaks) = peaks_result {
+            if let Ok(json) = serde_json::to_string(&peaks) {
+                if let Ok(conn) = state.db.lock() {
+                    conn.execute(
+                        "INSERT OR REPLACE INTO waveform_cache (media_id, peaks) VALUES (?1, ?2)",
+                        rusqlite::params![media_id, json],
+                    )
+                    .ok();
+                }
+            }
+        }
     }
 
     // 7. Tell the frontend something it cares about changed so the library
@@ -137,6 +173,163 @@ async fn ensure_cached_inner(state: &AppState, media_id: &str) -> anyhow::Result
         let _ = handle.emit("media-cached", media_id);
     }
 
+    Ok(())
+}
+
+/// Sync metadata for all Google Drive tracks that are still missing tag
+/// information. Runs sequentially to avoid saturating the Drive API or the
+/// local disk, and downloads each file to a short-lived temp path that is
+/// deleted as soon as metadata extraction finishes — we deliberately don't
+/// touch the cache_manager here, so the background sync doesn't compete
+/// with the user's play-driven LRU cache. Called from the background sync
+/// loop; safe to call when there are zero gdrive items (returns immediately).
+pub fn sync_gdrive_metadata(state: AppState) {
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = sync_gdrive_metadata_inner(&state).await {
+            log::warn!("[gdrive_cache] metadata sync: {}", e);
+        }
+    });
+}
+
+async fn sync_gdrive_metadata_inner(state: &AppState) -> anyhow::Result<()> {
+    let items = {
+        let conn = state.db.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
+        queries::get_gdrive_items_needing_metadata(&conn)?
+    };
+    if items.is_empty() {
+        return Ok(());
+    }
+
+    let token = match read_access_token(state).await {
+        Ok(t) => t,
+        Err(e) => {
+            log::warn!("[gdrive_cache] metadata sync skipped: {}", e);
+            return Ok(());
+        }
+    };
+
+    // A single reusable client — reqwest pools connections internally so this
+    // reuses keep-alive sockets across the loop.
+    let client = reqwest::Client::new();
+    let tmp_dir = state.app_data_dir.join("gdrive_meta_tmp");
+    let _ = tokio::fs::create_dir_all(&tmp_dir).await;
+
+    let total = items.len();
+    log::info!("[gdrive_cache] hydrating metadata for {} gdrive track(s)", total);
+
+    for (idx, item) in items.into_iter().enumerate() {
+        // Skip items that the playback path is already handling — no point
+        // racing the same download twice.
+        if !mark_started(&item.id) {
+            continue;
+        }
+        let result = hydrate_one_metadata(
+            state,
+            &client,
+            &token,
+            &tmp_dir,
+            &item,
+        )
+        .await;
+        mark_finished(&item.id);
+
+        if let Err(e) = result {
+            log::warn!(
+                "[gdrive_cache] metadata sync: {} ({}): {}",
+                item.name,
+                item.id,
+                e
+            );
+            continue;
+        }
+
+        // Nudge the UI periodically so long syncs show incremental progress
+        // rather than landing as one giant refresh at the end.
+        if let Some(handle) = &state.app_handle {
+            let _ = handle.emit("media-cached", &item.id);
+            if (idx + 1) % 10 == 0 || idx + 1 == total {
+                let _ = handle.emit("library-updated", ());
+            }
+        }
+    }
+
+    // Clean up temp directory if it's empty.
+    let _ = tokio::fs::remove_dir(&tmp_dir).await;
+
+    // Final refresh so any remainder after the last 10-item tick is flushed.
+    if let Some(handle) = &state.app_handle {
+        let _ = handle.emit("library-updated", ());
+    }
+
+    Ok(())
+}
+
+async fn hydrate_one_metadata(
+    state: &AppState,
+    client: &reqwest::Client,
+    token: &str,
+    tmp_dir: &std::path::Path,
+    item: &crate::models::MediaItem,
+) -> anyhow::Result<()> {
+    let ext_hint = mime_to_ext(&item.mime_type).unwrap_or("bin");
+    let tmp_path = tmp_dir.join(format!("{}.{}", item.id, ext_hint));
+
+    // Download the file to the temp path. We do a streaming write so very
+    // large files don't have to be buffered in memory all at once.
+    {
+        let url = gdrive_api::download_url(&item.external_id);
+        let resp = client.get(&url).bearer_auth(token).send().await?;
+        if !resp.status().is_success() {
+            anyhow::bail!("HTTP {}", resp.status());
+        }
+        let bytes = resp.bytes().await?;
+        tokio::fs::write(&tmp_path, &bytes).await?;
+    }
+
+    let meta_path = tmp_path.clone();
+    let meta_result = tokio::task::spawn_blocking(move || metadata::read_metadata(&meta_path))
+        .await
+        .map_err(|e| anyhow::anyhow!("metadata task join failed: {}", e))?;
+
+    // Always remove the temp file — we never register it in the cache.
+    let _ = tokio::fs::remove_file(&tmp_path).await;
+
+    let meta = meta_result.map_err(|e| anyhow::anyhow!("read_metadata: {}", e))?;
+
+    let mut updated = item.clone();
+    if updated.title.is_none() {
+        updated.title = meta.title;
+    }
+    if updated.artist.is_none() {
+        updated.artist = meta.artist;
+    }
+    if updated.album.is_none() {
+        updated.album = meta.album;
+    }
+    if updated.album_artist.is_none() {
+        updated.album_artist = meta.album_artist;
+    }
+    if updated.track_number.is_none() {
+        updated.track_number = meta.track_number;
+    }
+    if updated.duration_secs.is_none() {
+        updated.duration_secs = meta.duration_secs;
+    }
+    if updated.year.is_none() {
+        updated.year = meta.year;
+    }
+    if updated.genre.is_none() {
+        updated.genre = meta.genre;
+    }
+    if let Some(art) = meta.artwork {
+        updated.artwork_hash = Some(art.hash.clone());
+        if let Ok(conn) = state.db.lock() {
+            queries::upsert_artwork(&conn, &art.hash, &art.data, &art.mime_type).ok();
+        }
+    }
+    if let Ok(conn) = state.db.lock() {
+        queries::upsert_media_item(&conn, &updated)?;
+    }
     Ok(())
 }
 

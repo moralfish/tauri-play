@@ -55,16 +55,35 @@ impl MediaProvider for GDriveProvider {
         let oauth = self.oauth.clone();
         let folder_ids = self.folder_ids.clone();
 
+        // Policy: we never walk the entire Drive. If no folders are
+        // explicitly configured, the scan is a no-op. This matches the
+        // principle of least-surprise — users expect to see only what they
+        // asked for, and listing an entire Drive can take ages and return
+        // gigabytes of unrelated files.
+        if folder_ids.is_empty() {
+            on_progress(
+                "No Google Drive folders selected — skipping Drive scan.",
+                None,
+            );
+            return Ok(());
+        }
+
         // Cross-folder dedup: a single file may show up in multiple selected
         // folder trees (or via shortcuts) — only emit each external id once.
         let seen_files: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
         let item_count = AtomicUsize::new(0);
 
+        // The current folder being walked — updated inside the async loop so
+        // the file callback can stamp it onto each MediaItem. A plain
+        // `Mutex<Option<String>>` is fine here since there's a single
+        // concurrent walk at a time.
+        let current_folder: Mutex<Option<String>> = Mutex::new(None);
+
         let on_drive_file = |f: &api::DriveFile| {
             if !seen_files.lock().unwrap().insert(f.id.clone()) {
                 return;
             }
-            let item = MediaItem::new(
+            let mut item = MediaItem::new(
                 uuid::Uuid::new_v4().to_string(),
                 "gdrive".to_string(),
                 "gdrive".to_string(),
@@ -73,6 +92,9 @@ impl MediaProvider for GDriveProvider {
                 f.mime_type.clone(),
                 Self::kind_from_mime(&f.mime_type),
             );
+            // Stamp the parent folder so later folder removals can delete
+            // exactly the tracks this folder contributed.
+            item.gdrive_parent_folder_id = current_folder.lock().unwrap().clone();
             let n = item_count.fetch_add(1, Ordering::SeqCst) + 1;
             on_progress(&format!("Discovered {} files", n), Some(&f.name));
             on_item(item);
@@ -82,25 +104,22 @@ impl MediaProvider for GDriveProvider {
             on_progress("Authenticating with Google Drive...", None);
             let token = oauth.get_access_token().await?;
 
-            if folder_ids.is_empty() {
-                on_progress("Listing entire Google Drive...", None);
-                api::list_media_files(&token, &on_drive_file).await?;
-            } else {
-                let folder_total = folder_ids.len();
-                for (idx, folder_id) in folder_ids.iter().enumerate() {
-                    on_progress(
-                        &format!("Scanning Drive folder {}/{}", idx + 1, folder_total),
-                        None,
-                    );
-                    api::list_media_files_in_folder(
-                        &token,
-                        folder_id,
-                        &on_drive_file,
-                        &|status| on_progress(status, None),
-                    )
-                    .await?;
-                }
+            let folder_total = folder_ids.len();
+            for (idx, folder_id) in folder_ids.iter().enumerate() {
+                on_progress(
+                    &format!("Scanning Drive folder {}/{}", idx + 1, folder_total),
+                    None,
+                );
+                *current_folder.lock().unwrap() = Some(folder_id.clone());
+                api::list_media_files_in_folder(
+                    &token,
+                    folder_id,
+                    &on_drive_file,
+                    &|status| on_progress(status, None),
+                )
+                .await?;
             }
+            *current_folder.lock().unwrap() = None;
 
             Ok::<_, anyhow::Error>(())
         })?;
